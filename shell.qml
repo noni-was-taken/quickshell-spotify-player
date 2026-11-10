@@ -2,7 +2,7 @@
 //   qs -c music                         start (autostart.lua does this)
 //   qs -c music ipc call music toggle   open/close (Alt+S)
 //   qs -c music ipc call music search "text"   open with the search already filled in (testing)
-// Keys: Enter search, Space pause, Left/Right prev/next, D Spotify DJ, Escape close. In search: Up/Down + Enter plays, Shift+Enter or + adds to the queue, Escape goes back.
+// Keys: Enter search, Space pause, Left/Right prev/next, D Spotify DJ, B background look, Escape close. In search: Up/Down + Enter plays, Shift+Enter or + adds to the queue, Escape goes back.
 // Closing keeps the music playing (the hidden official Spotify app plays it; it starts on first open, quits after 10 idle minutes).
 // Spotify and LRCLIB calls go through ./spot. assets/ holds the pre-rendered mesh, grain, vignette and record.
 import QtQuick
@@ -149,6 +149,7 @@ ShellRoot {
         function toggle(): void { root.shown ? root.shown = false : root.open() }
         function open(): void { root.open() }
         function close(): void { root.shown = false }
+        function style(i: int): void { root.setStyle(i) }
         function search(q: string): void { root.open(); root.openSearch(); input.text = q }
     }
 
@@ -180,9 +181,19 @@ ShellRoot {
     property real flow: 0
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
+    // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
+    readonly property var bgStyles: ["Silk", "Pixel rain", "Particle currents", "Lava lamp", "Pixel beach"]
+    property int bgStyle: 0
+    property real seconds: 0
+    property real rainPhase: 0
+    property string styleNote: ""
+    function nextStyle() { setStyle((bgStyle + 1) % bgStyles.length); }
+    function setStyle(i) { bgStyle = i; styleNote = "Background: " + bgStyles[i]; styleTimer.restart(); }
+    Timer { id: styleTimer; interval: 1500; onTriggered: root.styleNote = "" }
     readonly property real fabricAmount: 0.28  // raise for a stronger pull, 0 turns it off
     property vector2d pointer: Qt.vector2d(0, 0)
     property vector2d lag: Qt.vector2d(0, 0)
+    property vector2d slowPointer: Qt.vector2d(0, 0)     // follows the mouse over a couple of seconds
     FrameAnimation {
         running: root.shown
         onTriggered: {
@@ -191,7 +202,11 @@ ShellRoot {
             const target = Math.min(1, bass * root.beatAmount);
             root.energy += (target - root.energy) * (1 - Math.exp(-dt * (target > root.energy ? 5 : 1.6)));
             root.flow += dt * (0.24 + 0.3 * root.energy);
+            root.seconds += dt;
+            root.rainPhase += dt * (1.6 + 0.4 * root.energy);
             const k = 1 - Math.exp(-dt * 3);         // how fast the fabric catches up with the pointer
+            const ks = 1 - Math.exp(-dt * 0.8);
+            root.slowPointer = Qt.vector2d(root.slowPointer.x + (root.pointer.x - root.slowPointer.x) * ks, root.slowPointer.y + (root.pointer.y - root.slowPointer.y) * ks);
             root.lag = Qt.vector2d(root.lag.x + (root.pointer.x - root.lag.x) * k, root.lag.y + (root.pointer.y - root.lag.y) * k);
         }
     }
@@ -280,6 +295,10 @@ ShellRoot {
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
+            property real style: root.bgStyle
+            property real clock: root.seconds
+            property real rainPhase: root.rainPhase
+            property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
                 const dx = (root.pointer.x - root.lag.x) * root.fabricAmount, dy = (root.pointer.y - root.lag.y) * root.fabricAmount;
                 const len = Math.hypot(dx, dy), cap = 0.11;
@@ -326,7 +345,7 @@ ShellRoot {
                 Keys.onSpacePressed: root.control(["toggle"])
                 Keys.onLeftPressed: root.control(["prev"])
                 Keys.onRightPressed: root.control(["next"])
-                Keys.onPressed: e => { if (e.key === Qt.Key_D) root.startDj(); }
+                Keys.onPressed: e => { if (e.key === Qt.Key_D) root.startDj(); else if (e.key === Qt.Key_B) root.nextStyle(); }
             }
 
             // left column: title, record, queue
@@ -437,6 +456,10 @@ ShellRoot {
                 }
                 Label { anchors.centerIn: parent; visible: root.lyrics.length === 0; text: root.lyricsNote; font.pixelSize: 22; opacity: 0.7 }
             }
+
+            Label { anchors { top: parent.top; topMargin: 40; horizontalCenter: parent.horizontalCenter }
+                text: root.styleNote; font.pixelSize: 18; opacity: root.styleNote ? 0.85 : 0
+                Behavior on opacity { NumberAnimation { duration: 250 } } }
 
             // flat media controls
             Row {

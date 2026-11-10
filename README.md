@@ -67,11 +67,24 @@ Search, playback and the queue use your Spotify account. The official Spotify ap
 | Space | Pause or play |
 | Left / Right | Previous or next song |
 | D, or the DJ button | Start Spotify's DJ |
+| B | Change the background |
 | Escape | Close search, then close the player |
 
 Closing the player keeps the music playing. While it is open, the screen won't lock or turn off from idling.
 
 In **Up next**, click a song to play it now, or right-click to remove it. Spotify has no way for apps to remove a queued song, so a removed song is hidden and skipped when it comes up.
+
+## Backgrounds
+
+Press **B** to cycle through them. All use the song's genre colours, react to the bass and respond gently to the mouse.
+
+- **Silk**: folding sheets of colour that move like fabric under the mouse
+- **Pixel rain**: falling pixels in three depths
+- **Particle currents**: dots drifting on slow currents
+- **Lava lamp**: soft blobs that merge and split
+- **Pixel beach**: a pixel-art sunset with waves running up the sand
+
+The player starts on Silk each time it launches.
 
 ## Customize
 
