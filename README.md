@@ -1,6 +1,6 @@
 # quickshell-spotify-player
 
-A full-screen Spotify player for Hyprland and KDE Plasma 6 (Wayland), built with Quickshell. It shows the album on a spinning record, a vertical audio visualizer, timed lyrics and your queue. The background colour follows the genre of the song.
+A full-screen Spotify player for Hyprland and KDE Plasma 6 (Wayland), built with Quickshell. It shows the album on a spinning record, timed lyrics and your queue. The background is a slowly folding sheet of colour that swells with the bass, moves like fabric when you move the mouse, and takes its colours from the song's genre.
 
 Search, playback and the queue use your Spotify account. The official Spotify app plays the audio, hidden on a special workspace. It starts when you first open the player and quits after 10 idle minutes.
 
@@ -8,8 +8,9 @@ Search, playback and the queue use your Spotify account. The official Spotify ap
 
 - Spotify Premium
 - Hyprland using its Lua config syntax (`hl.dsp...`), or KDE Plasma 6 on Wayland
-- `quickshell`, `cava`, `python3`, and Qt 6 SVG support
+- `quickshell`, `cava`, `python3`, `pactl`, and Qt 6 SVG support
 - The Spotify desktop app: `spotify-launcher`, or any `spotify` command (snap, Flatpak alias, RPM)
+- `qt6-shadertools`, only if you edit `assets/folds.frag` (rebuild with the command at the top of that file)
 
 ## Install
 
@@ -62,11 +63,15 @@ Search, playback and the queue use your Spotify account. The official Spotify ap
 | --- | --- |
 | Enter | Search |
 | Up / Down, then Enter | Pick and play a result |
+| Shift+Enter, or the + button | Add a result to the queue |
 | Space | Pause or play |
 | Left / Right | Previous or next song |
+| D, or the DJ button | Start Spotify's DJ |
 | Escape | Close search, then close the player |
 
-Closing the player keeps the music playing.
+Closing the player keeps the music playing. While it is open, the screen won't lock or turn off from idling.
+
+In **Up next**, click a song to play it now, or right-click to remove it. Spotify has no way for apps to remove a queued song, so a removed song is hidden and skipped when it comes up.
 
 ## Customize
 
@@ -75,6 +80,8 @@ Edit the top of `shell.qml`:
 - `fontName`: the design uses Euclid Circular A, a commercial font that is not included. Without it, Qt uses a default font.
 - `genres`: the colours for each genre.
 - `lyricOffset`: shifts the lyrics if they run early or late.
+- `beatAmount`: how strongly the background reacts to the bass.
+- `fabricAmount`: how much the background reacts to the mouse. 0 turns it off.
 - `quitAfterMinutes`: how long the hidden Spotify app stays open when idle.
 
 ## Data sources
