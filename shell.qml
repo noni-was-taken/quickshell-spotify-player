@@ -301,7 +301,16 @@ ShellRoot {
             layer.smooth: true
         }
         Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
-        Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/grain.png"; fillMode: Image.Tile; opacity: 0.5; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
+            id: grain
+            x: -220; y: -220; width: parent.width + 220; height: parent.height + 220
+            source: "file://" + root.dir + "/assets/grain.png"; fillMode: Image.Tile; opacity: 0.3
+            horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop
+            Timer {
+                running: root.shown; interval: 250; repeat: true
+                onTriggered: { grain.x = -Math.floor(Math.random() * 220); grain.y = -Math.floor(Math.random() * 220); }
+            }
+        }
         Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
 
         // ---- everything else is laid out at 1920x1080 and scaled to the screen ----
