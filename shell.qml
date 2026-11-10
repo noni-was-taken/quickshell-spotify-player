@@ -182,18 +182,31 @@ ShellRoot {
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
     // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
-    readonly property var bgStyles: ["Silk", "Pixel rain", "Particle currents", "Lava lamp", "Pixel beach"]
+    readonly property var bgStyles: ["Silk", "Water", "Particle currents", "Lava lamp", "Pixel beach"]
     property int bgStyle: 0
     property real seconds: 0
-    property real rainPhase: 0
     property string styleNote: ""
     function nextStyle() { setStyle((bgStyle + 1) % bgStyles.length); }
     function setStyle(i) { bgStyle = i; styleNote = "Background: " + bgStyles[i]; styleTimer.restart(); }
     Timer { id: styleTimer; interval: 1500; onTriggered: root.styleNote = "" }
     readonly property real fabricAmount: 0.28  // raise for a stronger pull, 0 turns it off
-    property vector2d pointer: Qt.vector2d(0, 0)
-    property vector2d lag: Qt.vector2d(0, 0)
-    property vector2d slowPointer: Qt.vector2d(0, 0)     // follows the mouse over a couple of seconds
+    property vector2d pointer: Qt.vector2d(99, 99)      // far off-screen until the mouse is over the player
+    property vector2d lag: Qt.vector2d(99, 99)
+    property vector4d bassDrop: Qt.vector4d(0, 0, 0, 0)   // the jolt handed to the next simulation step
+    property var pendingDrops: []
+    property real quakeReadyAt: 0
+    property var quakeBag: []
+    function nextDrop() {      // called once per simulation step, so no jolt is missed between steps
+        const i = pendingDrops.findIndex(d => d.at <= seconds);
+        if (i < 0) { bassDrop = Qt.vector4d(0, 0, 0, 0); return; }
+        const d = pendingDrops.splice(i, 1)[0];
+        bassDrop = Qt.vector4d(d.x, d.y, 0.45, 0);
+    }
+    property real lastEnergy: 0
+    property real slowEnergy: 0
+    property real ripplePush: 0        // mouse speed, turned into a push on the water
+    property vector2d lastPointer: Qt.vector2d(99, 99)
+    property vector2d slowPointer: Qt.vector2d(99, 99)     // follows the mouse over a couple of seconds
     FrameAnimation {
         running: root.shown
         onTriggered: {
@@ -203,7 +216,24 @@ ShellRoot {
             root.energy += (target - root.energy) * (1 - Math.exp(-dt * (target > root.energy ? 5 : 1.6)));
             root.flow += dt * (0.24 + 0.3 * root.energy);
             root.seconds += dt;
-            root.rainPhase += dt * (1.6 + 0.4 * root.energy);
+            const moved = root.pointer.x > 90 || root.lastPointer.x > 90 ? 0 : Math.hypot(root.pointer.x - root.lastPointer.x, root.pointer.y - root.lastPointer.y);
+            root.ripplePush = Math.min(moved * 2.0, 0.5);
+            root.lastPointer = root.pointer;
+            const a = win.width / win.height;
+            // On a bass hit, a small "quake": 3 to 5 jolts close together in a random area, a moment apart
+            root.slowEnergy += (root.energy - root.slowEnergy) * (1 - Math.exp(-dt * 1.5));
+            // a hit = the bass jumping above its recent level (comparing frame to frame missed hits at 144 Hz)
+            if (root.bgStyle === 1 && root.energy - root.slowEnergy > 0.08 && root.seconds > root.quakeReadyAt) {
+                if (root.quakeBag.length === 0)       // deal the screen out in a 4x3 grid, shuffled, so quakes spread evenly
+                    root.quakeBag = [...Array(12).keys()].sort(() => Math.random() - 0.5);
+                const cell = root.quakeBag.pop();
+                const cx = ((cell % 4 + Math.random()) / 4 - 0.5) * 1.8 * a, cy = ((Math.floor(cell / 4) + Math.random()) / 3 - 0.5) * 1.8;
+                const n = 3 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < n; i++)
+                    root.pendingDrops.push({ x: cx + (Math.random() - 0.5) * 0.45, y: cy + (Math.random() - 0.5) * 0.45, at: root.seconds + i * 0.07 });
+                root.quakeReadyAt = root.seconds + 0.55;
+            }
+            root.lastEnergy = root.energy;
             const k = 1 - Math.exp(-dt * 3);         // how fast the fabric catches up with the pointer
             const ks = 1 - Math.exp(-dt * 0.8);
             root.slowPointer = Qt.vector2d(root.slowPointer.x + (root.pointer.x - root.slowPointer.x) * ks, root.slowPointer.y + (root.pointer.y - root.slowPointer.y) * ks);
@@ -288,16 +318,48 @@ ShellRoot {
         IdleInhibitor { window: win; enabled: root.shown }     // no screen-off, lock or sleep from idling while the player is open
 
         // ---- background: silk folds that swell with the bass, then the filmed-monitor texture ----
+        // Water: a small ripple simulation that feeds back into itself every frame.
+        // Only exists while the player is open on that background: moving it between monitors crashes Qt.
+        Loader {
+            id: rippleLoader
+            active: root.shown && root.bgStyle === 1
+            sourceComponent: Item {
+                property alias texture: ripples
+                ShaderEffectSource {
+                    id: ripples
+                    sourceItem: rippleSim
+                    recursive: true
+                    live: false                         // stepped by the timer below, so ripple speed doesn't depend on the monitor's refresh rate
+                    format: ShaderEffectSource.RGBA16F
+                    textureSize: Qt.size(320, 180)
+                    visible: false
+                }
+                Timer { interval: 16; running: true; repeat: true; onTriggered: { root.nextDrop(); ripples.scheduleUpdate(); } }   // about 60 simulation steps a second
+                ShaderEffect {
+                    id: rippleSim
+                    x: -400; width: 320; height: 180     // parked off-screen: only the capture above reads it
+                    fragmentShader: "file://" + root.dir + "/assets/ripples.frag.qsb"
+                    property var src: ripples
+                    property vector2d texel: Qt.vector2d(1 / 320, 1 / 180)
+                    property real aspect: win.width / win.height
+                    property vector2d mouse: root.pointer
+                    property real push: root.ripplePush
+                    property real tick: root.seconds
+                    property vector4d drop: root.bassDrop
+                }
+            }
+        }
+        Rectangle { id: blank; width: 1; height: 1; color: "black"; visible: false; layer.enabled: true }   // stand-in texture when there is no simulation
         ShaderEffect {
             anchors.fill: parent
             fragmentShader: "file://" + root.dir + "/assets/folds.frag.qsb"
+            property var water: rippleLoader.item ? rippleLoader.item.texture : blank
             property real flow: root.flow
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
             property real style: root.bgStyle
             property real clock: root.seconds
-            property real rainPhase: root.rainPhase
             property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
                 const dx = (root.pointer.x - root.lag.x) * root.fabricAmount, dy = (root.pointer.y - root.lag.y) * root.fabricAmount;
@@ -309,7 +371,10 @@ ShellRoot {
                     const a = win.width / win.height;
                     root.pointer = Qt.vector2d((point.position.x / win.width - 0.5) * a * 2, (point.position.y / win.height - 0.5) * 2);
                 }
-                onHoveredChanged: if (hovered) root.lag = root.pointer      // entering the window isn't a drag
+                onHoveredChanged: {        // entering isn't a drag; leaving parks the pointer off-screen so nothing reacts to it
+                    if (hovered) { root.lag = root.pointer; root.slowPointer = root.pointer; }
+                    else root.pointer = root.lag = root.slowPointer = Qt.vector2d(99, 99);
+                }
             }
             property color c0: root.c0
             property color c1: root.c1

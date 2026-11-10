@@ -11,15 +11,15 @@ layout(std140, binding = 0) uniform buf {
     float aspect;
     vec2 mouse;    // pointer, in the same space as p below
     vec2 drag;     // how far the pointer is ahead of where the fabric has caught up to (eases back to 0)
-    float style;   // 0 silk, 1 pixel rain, 2 particle currents, 3 lava lamp, 4 pixel beach
+    float style;   // 0 silk, 1 water, 2 particle currents, 3 lava lamp, 4 pixel beach
     float clock;   // seconds
     vec2 slowMouse;  // the pointer, heavily smoothed, for the calmer backgrounds
-    float rainPhase; // rain position, sped up by the bass on the CPU side so it never jumps
     vec4 c0;
     vec4 c1;
     vec4 c2;
     vec4 c3;
 };
+layout(binding = 1) uniform sampler2D water;   // ripple heights from ripples.frag (water background)
 
 // sin-free hashes (Hoskins), so the patterns stay clean in long sessions
 float h2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -69,27 +69,38 @@ vec3 silk(vec2 p) {
     return c0.rgb + g * (1.25 + 0.7 * energy);
 }
 
-// ---- 1 pixel rain: three depths of falling pixels; far ones small and dim, near ones big and sparse ----
-vec3 rainLayer(vec2 p, float cs, float speed, float bright, float density, float seed) {
-    float cx = floor(p.x / cs);
-    float sp = (0.5 + h1(cx + seed) * 0.9) * speed;
-    float len = 12.0 + floor(h1(cx + seed + 3.1) * 20.0);
-    float yy = p.y / cs - rainPhase * sp - h1(cx + seed + 7.0) * 200.0;
-    float t = fract(floor(yy) / len);
-    float on = h1(cx + seed + 19.0) < density ? 1.0 : 0.0;
-    float body = pow(t, 4.0) * on;
-    float head = step(1.0 - 1.0 / len, t) * on;
-    vec2 q = fract(vec2(p.x / cs, yy)) - 0.5;
-    float lit = 1.0 - smoothstep(0.32, 0.4, max(abs(q.x), abs(q.y)));
-    vec3 tint = mix(c1.rgb, c2.rgb, h1(cx + seed + 11.0));
-    return (tint * body + mix(tint, vec3(1.0), 0.35) * head * 0.6) * lit * bright * (1.0 + 0.25 * energy);
+// ---- 1 water: a calm pool seen from above; the mouse and the bass drop ripples into it (ripples.frag) ----
+float caustic(vec2 q) {      // two slowly drifting webs of thin light lines, like sun through water
+    float a = fbm(q + vec2(clock * 0.05, clock * 0.03));
+    float b = fbm(q * 1.4 + vec2(-clock * 0.04, clock * 0.05) + 7.0);
+    return (1.0 - smoothstep(0.0, 0.05, abs(a - 0.5))) * 0.6 + (1.0 - smoothstep(0.0, 0.05, abs(b - 0.5))) * 0.4;
 }
-vec3 rain(vec2 p) {
-    float part = 1.0 - 0.4 * (1.0 - smoothstep(0.1, 0.45, length(p - slowMouse)));
-    vec3 light = rainLayer(p, 2.0 / 110.0, 0.45, 0.35, 0.55, 0.0)
-               + rainLayer(p, 2.0 / 60.0, 0.75, 0.6, 0.4, 41.0)
-               + rainLayer(p, 2.0 / 30.0, 1.1, 0.85, 0.18, 83.0);
-    return c0.rgb + light * part;
+vec3 waterSurface(vec2 p) {     // slow, soft pools of light drifting under the dots
+    vec2 drift = vec2(clock * 0.03, -clock * 0.02);
+    vec2 w = vec2(fbm(p * 0.5 + drift), fbm(p * 0.5 - drift + 4.0));
+    float wash = 0.25 + 0.5 * smoothstep(0.2, 0.85, fbm(p * 0.7 + (w - 0.5) * 1.2 + drift * 0.5));   // gentle: pools never go fully dark or fully bright
+    vec3 tint = mix(c1.rgb, c2.rgb, smoothstep(0.35, 0.65, w.x));
+    return mix(c3.rgb * 0.35 + c0.rgb * 0.5, tint * 0.9, wash) * (1.0 + 0.05 * energy);
+}
+float rippleAt(vec2 uv) {
+    float h = texture(water, uv).r;
+    return h == h ? clamp(h, -1.0, 1.0) : 0.0;      // guard against a bad first frame of the simulation
+}
+vec3 waterHalftone(vec2 p) {     // halftone dots that behave like a liquid: ripples crowd and spread them, and swell them
+    vec2 uv = p / (vec2(aspect, 1.0) * 2.0) / 1.25 + 0.5;      // the screen is the middle of a bigger sheet of water
+    vec2 tx = vec2(1.0 / 320.0, 1.0 / 180.0);
+    float h = rippleAt(uv);
+    vec2 slope = vec2(rippleAt(uv + vec2(tx.x, 0.0)) - rippleAt(uv - vec2(tx.x, 0.0)),
+                      rippleAt(uv + vec2(0.0, tx.y)) - rippleAt(uv - vec2(0.0, tx.y)));
+    float cs = 2.0 / 80.0;
+    mat2 rot = mat2(0.7071, -0.7071, 0.7071, 0.7071);
+    vec2 r = rot * (p - slope * 0.14);                   // the dot grid itself is pushed around: gaps open and close
+    vec2 cell = floor(r / cs);
+    vec3 col = waterSurface(transpose(rot) * ((cell + 0.5) * cs));
+    float lum = clamp(dot(col, vec3(0.3, 0.5, 0.2)) * 2.0, 0.3, 0.6);
+    float d = length(fract(r / cs) - 0.5);
+    float inDot = 1.0 - smoothstep(-0.04, 0.04, d - 0.55 * sqrt(lum) * clamp(1.0 + 1.1 * h, 0.2, 1.8));
+    return mix(c0.rgb * 0.3, col * (0.75 + 0.12 * max(h, 0.0)), inDot);   // dim on purpose: Water sits as calmly as the other backgrounds
 }
 
 // ---- 2 particle currents: dots carried along slow currents; soft light, gentle reaction ----
@@ -177,6 +188,6 @@ vec3 beach(vec2 p) {
 
 void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * vec2(aspect, 1.0) * 2.0;
-    vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? rain(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p) : beach(p);
+    vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p) : beach(p);
     fragColor = vec4(min(col, vec3(1.0)), 1.0) * qt_Opacity;
 }

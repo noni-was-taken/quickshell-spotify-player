@@ -79,7 +79,7 @@ In **Up next**, click a song to play it now, or right-click to remove it. Spotif
 Press **B** to cycle through them. All use the song's genre colours, react to the bass and respond gently to the mouse.
 
 - **Silk**: folding sheets of colour that move like fabric under the mouse
-- **Pixel rain**: falling pixels in three depths
+- **Water**: halftone dots on a sheet of water. Moving the mouse sends ripples through the dots, and bass hits set off small quakes in random spots
 - **Particle currents**: dots drifting on slow currents
 - **Lava lamp**: soft blobs that merge and split
 - **Pixel beach**: a pixel-art sunset with waves running up the sand
