@@ -2,6 +2,7 @@
 //   qs -c music                         start (autostart.lua does this)
 //   qs -c music ipc call music toggle   open/close (Alt+S)
 //   qs -c music ipc call music search "text"   open with the search already filled in (testing)
+// YouTube mode: shown while a browser Picture-in-Picture window exists; its video is shown live in the middle.
 // Keys: Enter search, Space pause, Left/Right prev/next, D Spotify DJ, B background look, Escape close. In search: Up/Down + Enter plays, Shift+Enter or + adds to the queue, Escape goes back.
 // Closing keeps the music playing (the hidden official Spotify app plays it; it starts on first open, quits after 10 idle minutes).
 // Spotify and LRCLIB calls go through ./spot. assets/ holds the pre-rendered mesh, grain, vignette and record.
@@ -12,6 +13,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
 import Quickshell.Hyprland
+import Quickshell.Services.Mpris
 
 ShellRoot {
     id: root
@@ -150,8 +152,68 @@ ShellRoot {
         function open(): void { root.open() }
         function close(): void { root.shown = false }
         function style(i: int): void { root.setStyle(i) }
+        function ytstyle(i: int): void { root.ytStyle = i }
         function search(q: string): void { root.open(); root.openSearch(); input.text = q }
     }
+
+    // ---- YouTube mode ----
+    readonly property string pipTitle: Quickshell.env("MUSIC_PIP_TITLE") || "Picture-in-Picture"   // env override is for testing
+    readonly property var pipWindow: Hyprland.toplevels.values.find(t => t.title === pipTitle) ?? null
+    readonly property bool ytMode: pipWindow !== null
+    readonly property var ytPlayer: {
+        const ps = Mpris.players.values.filter(p => /firefox|chrom|brave|vivaldi|zen/i.test(p.identity + " " + p.desktopEntry));
+        return ps.find(p => p.isPlaying) ?? ps[0] ?? null;
+    }
+    readonly property bool ytHasLength: ytPlayer !== null && ytPlayer.lengthSupported && ytPlayer.length > 1    // Firefox often reports no length for YouTube
+    readonly property bool ytPlaying: ytMode && ytPlayer !== null && ytPlayer.isPlaying
+    readonly property var ytStyles: ["Club lights", "Cozy jazz", "Rainy lo-fi", "Aurora"]
+    property int ytStyle: 0
+    // While the player shows it, the Picture-in-Picture window is made full size (sharp video) and tucked away on a
+    // hidden workspace; when the player closes it goes back to where it was, at its old size.
+    readonly property bool pipInUse: shown && ytMode
+    property var pipSaved: null
+    function hypr(expr) { Quickshell.execDetached(["hyprctl", "dispatch", expr]); }
+    onPipInUseChanged: {
+        if (pipInUse) {
+            pipInfo.addr = "0x" + pipWindow.address;
+            pipInfo.running = true;     // read its current place fresh (the cached copy can be out of date), then tuck it away
+        } else if (pipSaved) {
+            const p = pipSaved;
+            pipSaved = null;
+            if (!Hyprland.toplevels.values.some(t => "address:0x" + t.address === p.addr)) return;
+            const ws = p.ws ? p.ws : String(Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.name : 1);
+            hypr('hl.dsp.window.move({ workspace = "' + ws + '", window = "' + p.addr + '", follow = false })');
+            hypr('hl.dsp.window.resize({ x = ' + p.size[0] + ', y = ' + p.size[1] + ', window = "' + p.addr + '" })');
+            if (p.at) hypr('hl.dsp.window.move({ x = ' + p.at[0] + ', y = ' + p.at[1] + ', window = "' + p.addr + '" })');
+            if (p.pinned) hypr('hl.dsp.window.pin({ action = "enable", window = "' + p.addr + '" })');
+        }
+    }
+    function tuckPip(c) {
+        const a = "address:" + c.address;
+        pipSaved = { addr: a, size: c.size, at: c.at, pinned: c.pinned === true, ws: c.workspace ? c.workspace.name : "" };
+            captureReady = false;
+            hypr('hl.dsp.window.pin({ action = "disable", window = "' + a + '" })');      // Firefox pins it; pinned windows can't change workspace
+            hypr('hl.dsp.window.float({ action = "enable", window = "' + a + '" })');
+            hypr('hl.dsp.window.resize({ x = 1920, y = 1080, window = "' + a + '" })');
+            hypr('hl.dsp.window.move({ workspace = "special:pip", window = "' + a + '", follow = false })');
+            captureDelay.restart();     // start capturing once the window has its new size
+    }
+    Process {
+        id: pipInfo
+        property string addr: ""
+        command: ["hyprctl", "clients", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let c = null;
+                try { c = JSON.parse(text).find(w => w.address === pipInfo.addr); } catch (e) {}
+                if (c && root.pipInUse) root.tuckPip(c);
+            }
+        }
+    }
+    property bool captureReady: false
+    Timer { id: captureDelay; interval: 450; onTriggered: root.captureReady = true }
+    function ytToggle() { if (ytPlayer) ytPlayer.togglePlaying(); }
+    Timer { running: root.shown && root.ytMode && root.ytPlayer !== null; interval: 500; repeat: true; onTriggered: root.ytPlayer.positionChanged() }
 
     property real lastTick: 0
     Timer {     // smooth position between polls
@@ -186,7 +248,10 @@ ShellRoot {
     property int bgStyle: 0
     property real seconds: 0
     property string styleNote: ""
-    function nextStyle() { setStyle((bgStyle + 1) % bgStyles.length); }
+    function nextStyle() {
+        if (ytMode) { ytStyle = (ytStyle + 1) % ytStyles.length; styleNote = "Background: " + ytStyles[ytStyle]; styleTimer.restart(); }
+        else setStyle((bgStyle + 1) % bgStyles.length);
+    }
     function setStyle(i) { bgStyle = i; styleNote = "Background: " + bgStyles[i]; styleTimer.restart(); }
     Timer { id: styleTimer; interval: 1500; onTriggered: root.styleNote = "" }
     readonly property real fabricAmount: 0.28  // raise for a stronger pull, 0 turns it off
@@ -211,7 +276,7 @@ ShellRoot {
         running: root.shown
         onTriggered: {
             const dt = Math.min(0.05, frameTime);
-            const bass = root.playing && root.bars.length ? ((root.bars[0] || 0) + (root.bars[1] || 0) + (root.bars[2] || 0)) / 300 : 0;
+            const bass = (root.playing || root.ytPlaying) && root.bars.length ? ((root.bars[0] || 0) + (root.bars[1] || 0) + (root.bars[2] || 0)) / 300 : 0;
             const target = Math.min(1, bass * root.beatAmount);
             root.energy += (target - root.energy) * (1 - Math.exp(-dt * (target > root.energy ? 5 : 1.6)));
             root.flow += dt * (0.24 + 0.3 * root.energy);
@@ -223,7 +288,7 @@ ShellRoot {
             // On a bass hit, a small "quake": 3 to 5 jolts close together in a random area, a moment apart
             root.slowEnergy += (root.energy - root.slowEnergy) * (1 - Math.exp(-dt * 1.5));
             // a hit = the bass jumping above its recent level (comparing frame to frame missed hits at 144 Hz)
-            if (root.bgStyle === 1 && root.energy - root.slowEnergy > 0.08 && root.seconds > root.quakeReadyAt) {
+            if (root.bgStyle === 1 && !root.ytMode && root.energy - root.slowEnergy > 0.08 && root.seconds > root.quakeReadyAt) {
                 if (root.quakeBag.length === 0)       // deal the screen out in a 4x3 grid, shuffled, so quakes spread evenly
                     root.quakeBag = [...Array(12).keys()].sort(() => Math.random() - 0.5);
                 const cell = root.quakeBag.pop();
@@ -242,7 +307,7 @@ ShellRoot {
     }
 
     Process {
-        running: root.shown && root.playing
+        running: root.shown && (root.playing || root.ytPlaying)
         command: ["cava", "-p", root.dir + "/cava.conf"]
         stdout: SplitParser { onRead: data => root.bars = data.split(";").filter(v => v !== "").map(Number) }
         onRunningChanged: if (!running) root.bars = []
@@ -322,7 +387,7 @@ ShellRoot {
         // Only exists while the player is open on that background: moving it between monitors crashes Qt.
         Loader {
             id: rippleLoader
-            active: root.shown && root.bgStyle === 1
+            active: root.shown && root.bgStyle === 1 && !root.ytMode
             sourceComponent: Item {
                 property alias texture: ripples
                 ShaderEffectSource {
@@ -358,7 +423,7 @@ ShellRoot {
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
-            property real style: root.bgStyle
+            property real style: root.ytMode ? 5 + root.ytStyle : root.bgStyle
             property real clock: root.seconds
             property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
@@ -384,9 +449,10 @@ ShellRoot {
             layer.textureSize: Qt.size(960, 540)
             layer.smooth: true
         }
-        Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image { visible: !root.ytMode; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
         Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
             id: grain
+            visible: !root.ytMode
             x: -220; y: -220; width: parent.width + 220; height: parent.height + 220
             source: "file://" + root.dir + "/assets/grain.png"; fillMode: Image.Tile; opacity: 0.3
             horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop
@@ -394,6 +460,14 @@ ShellRoot {
                 running: root.shown; interval: 250; repeat: true
                 onTriggered: { grain.x = -Math.floor(Math.random() * 220); grain.y = -Math.floor(Math.random() * 220); }
             }
+        }
+        ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
+            anchors.fill: parent
+            visible: root.ytMode
+            fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
+            property real look: root.ytStyle
+            property real clock: root.seconds
+            property vector2d size: Qt.vector2d(width, height)
         }
         Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
 
@@ -407,7 +481,7 @@ ShellRoot {
                 Keys.onReturnPressed: root.openSearch()
                 Keys.onEnterPressed: root.openSearch()
                 Keys.onEscapePressed: root.shown = false
-                Keys.onSpacePressed: root.control(["toggle"])
+                Keys.onSpacePressed: root.ytMode ? root.ytToggle() : root.control(["toggle"])
                 Keys.onLeftPressed: root.control(["prev"])
                 Keys.onRightPressed: root.control(["next"])
                 Keys.onPressed: e => { if (e.key === Qt.Key_D) root.startDj(); else if (e.key === Qt.Key_B) root.nextStyle(); }
@@ -415,6 +489,7 @@ ShellRoot {
 
             // left column: title, record, queue
             Column {
+                visible: !root.ytMode
                 x: 110; width: 440
                 y: root.upNext.length > 0 ? 136 : 262        // no queue (DJ mode): centre the title and record vertically
                 Behavior on y { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
@@ -475,6 +550,7 @@ ShellRoot {
 
             // lyrics: one tall column that slides, so the centre line is always the focused one
             Item {
+                visible: !root.ytMode
                 x: 860; y: 200; width: 760; height: 680
                 clip: true
                 property real scrolled: 0       // plain (untimed) lyrics scroll with the wheel
@@ -526,8 +602,52 @@ ShellRoot {
                 text: root.styleNote; font.pixelSize: 18; opacity: root.styleNote ? 0.85 : 0
                 Behavior on opacity { NumberAnimation { duration: 250 } } }
 
+            // ---- YouTube mode: the Picture-in-Picture video, live, with its title and controls ----
+            Item {
+                visible: root.ytMode
+                anchors.fill: parent
+                Rectangle {     // shadow and frame behind the video
+                    x: 320; y: 130; width: 1280; height: 720; radius: 18
+                    color: "#060608"; border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.08)
+                }
+                ClippingRectangle {
+                    x: 320; y: 130; width: 1280; height: 720; radius: 18; color: "transparent"
+                    ScreencopyView {
+                        id: pipView
+                        anchors.centerIn: parent
+                        onStopped: { root.captureReady = false; captureDelay.restart(); }    // the capture breaks if the window resizes: start it again
+                        readonly property real fit: sourceSize.width > 0 ? Math.min(1280 / sourceSize.width, 720 / sourceSize.height) : 1
+                        width: sourceSize.width * fit; height: sourceSize.height * fit
+                        captureSource: root.shown && root.ytMode && root.captureReady ? root.pipWindow.wayland : null
+                        live: true
+                    }
+                }
+                Label { x: 320; y: 880; width: 1280; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 32; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                Label { x: 320; y: 926; width: 1280; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 18; opacity: 0.7; elide: Text.ElideRight }
+                Row {
+                    x: 320; y: 990; width: 1280; spacing: 18
+                    IconButton { anchors.verticalCenter: parent.verticalCenter; icon: root.ytPlaying ? "pause" : "play"; onClicked: root.ytToggle() }
+                    Label { anchors.verticalCenter: parent.verticalCenter; visible: root.ytHasLength; text: root.ytPlayer ? root.clock(root.ytPlayer.position * 1000) : ""; font.pixelSize: 15; opacity: 0.72; font.features: ({ "tnum": 1 }) }
+                    Rail {
+                        visible: root.ytHasLength
+                        anchors.verticalCenter: parent.verticalCenter; width: 940
+                        fraction: root.ytPlayer && root.ytPlayer.length > 0 ? root.ytPlayer.position / root.ytPlayer.length : 0
+                        onPicked: f => { if (root.ytPlayer && root.ytPlayer.canSeek) root.ytPlayer.position = f * root.ytPlayer.length; }
+                    }
+                    Label { anchors.verticalCenter: parent.verticalCenter; visible: root.ytHasLength; text: root.ytPlayer ? root.clock(root.ytPlayer.length * 1000) : ""; font.pixelSize: 15; opacity: 0.72; font.features: ({ "tnum": 1 }) }
+                    Image { anchors.verticalCenter: parent.verticalCenter; width: 24; height: 24; sourceSize: Qt.size(48, 48); source: "file://" + root.dir + "/assets/volume.svg" }
+                    Rail {
+                        anchors.verticalCenter: parent.verticalCenter; width: 60
+                        fraction: root.ytPlayer ? root.ytPlayer.volume : 0
+                        onPicked: f => { if (root.ytPlayer) root.ytPlayer.volume = f; }
+                    }
+                }
+                Label { x: 60; y: 44; text: "YouTube mode"; font.pixelSize: 16; font.weight: Font.DemiBold; opacity: 0.55 }
+            }
+
             // flat media controls
             Row {
+                visible: !root.ytMode
                 anchors { bottom: parent.bottom; bottomMargin: 38; horizontalCenter: parent.horizontalCenter }
                 spacing: 20
                 IconButton { anchors.verticalCenter: parent.verticalCenter; icon: "back"; onClicked: root.control(["prev"]) }

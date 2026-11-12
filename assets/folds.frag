@@ -201,8 +201,100 @@ vec3 beach(vec2 p) {
     return floor(col * 20.0 + 0.5) / 20.0;    // finer colour steps: coarse ones drew rings around the sun
 }
 
+// ---- YouTube mode: fixed-mood scenes around the video (styles 5-8). The video sits at x 320-1600, y 130-850 of 1920x1080. ----
+float videoDist(vec2 p) {      // distance from the video rectangle, in p units
+    vec2 c = vec2(0.0, -0.1185), h = vec2(1.3333 * 0.6667, 0.6667);
+    vec2 d = abs(p - c) - h;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+vec3 spill(vec2 p, vec3 a, vec3 b) {   // the video lights the room around it
+    float d = max(videoDist(p), 0.0);
+    return mix(a, b, smoothstep(-1.0, 1.0, p.x)) * exp(-d * 3.0) * 0.35;
+}
+float sparkle(vec2 p, float cells, float seed, float keep) {   // soft round lights scattered on a jittered grid
+    vec2 cell = floor(p * cells);
+    if (h2(cell + seed) < keep) return 0.0;
+    vec2 c = (cell + 0.5 + 0.7 * (vec2(h2(cell + seed + 1.0), h2(cell + seed + 2.0)) - 0.5)) / cells;
+    float r = (0.06 + 0.1 * h2(cell + seed + 3.0)) / cells;
+    float d = length(p - c);
+    return exp(-d * d / (r * r)) * (0.5 + 0.5 * sin(clock * 0.8 + h2(cell + seed) * 40.0));
+}
+vec3 clubCol(float i) {      // old GLSL on some drivers has no constant arrays
+    float k = mod(i, 5.0);
+    return k < 0.5 ? vec3(1.0, 0.18, 0.7) : k < 1.5 ? vec3(0.13, 0.88, 1.0) : k < 2.5 ? vec3(0.65, 1.0, 0.24) : k < 3.5 ? vec3(0.54, 0.36, 1.0) : vec3(1.0, 0.54, 0.16);
+}
+vec3 club(vec2 p) {
+    vec3 col = vec3(0.025, 0.02, 0.045);
+    for (int s = 0; s < 3; s++) {
+        vec2 src = vec2(-1.2 + 1.2 * float(s), -1.05);
+        for (int k = 0; k < 4; k++) {
+            float fk = float(k + s * 4);
+            float ang = 0.8 * sin(clock * (0.25 + 0.05 * fk) + fk * 1.9);
+            vec2 dir = vec2(sin(ang), cos(ang));
+            vec2 q = p - src;
+            float along = dot(q, dir), across = abs(q.x * dir.y - q.y * dir.x);
+            float beam = smoothstep(0.03 + along * 0.09, 0.0, across) * step(0.0, along) * exp(-along * 0.45);
+            float strobe = 0.55 + 0.45 * sin(clock * 0.9 + fk * 2.3) + 0.6 * energy;
+            col += clubCol(fk) * beam * 0.32 * strobe;
+        }
+    }
+    col += vec3(0.5, 0.15, 0.6) * 0.12 * fbm(p * 1.2 + vec2(clock * 0.05, 0.0));   // haze
+    // smoke the beams light up, and soft round sparkles drifting slowly upward
+    float smoke = fbm(p * 1.4 + vec2(clock * 0.04, -clock * 0.03) + fbm(p * 0.8 - clock * 0.02));
+    col += mix(clubCol(0.0), clubCol(3.0), smoothstep(0.3, 0.7, fbm(p * 0.6 + 4.0))) * 0.16 * smoothstep(0.45, 0.85, smoke);
+    vec2 sp = p + vec2(0.0, clock * 0.03);
+    for (int k = 0; k < 3; k++) col += clubCol(float(k) * 2.0) * sparkle(sp, 9.0 + 5.0 * float(k), 11.0 * float(k), 0.86) * 0.5;
+    return col + spill(p, clubCol(0.0), clubCol(1.0));
+}
+vec3 bokeh(vec2 p, float cells, float speed, vec3 a, vec3 b, float seed) {
+    vec2 q = p + vec2(0.0, clock * speed);
+    vec2 cell = floor(q * cells);
+    if (h2(cell + seed) < 0.6) return vec3(0.0);
+    vec2 c = (cell + 0.25 + 0.5 * vec2(h2(cell + seed + 1.0), h2(cell + seed + 2.0))) / cells;
+    float r = (0.18 + 0.2 * h2(cell + seed + 3.0)) / cells;
+    float disc = smoothstep(r, r * 0.8, length(q - c)) * (0.55 + 0.45 * sin(clock * 0.4 + h2(cell) * 30.0));
+    return mix(a, b, h2(cell + seed + 4.0)) * disc;
+}
+vec3 jazz(vec2 p) {
+    vec3 col = mix(vec3(0.09, 0.05, 0.025), vec3(0.03, 0.015, 0.01), smoothstep(-1.0, 1.0, p.x + p.y * 0.5));
+    col += vec3(1.0, 0.6, 0.28) * 0.22 * exp(-dot(p - vec2(-1.3, -0.9), p - vec2(-1.3, -0.9)) / 0.8);   // lamp glow
+    col += vec3(0.77, 0.4, 0.17) * 0.14 * exp(-dot(p - vec2(1.5, 0.8), p - vec2(1.5, 0.8)) / 0.7);
+    col += bokeh(p, 3.0, 0.012, vec3(1.0, 0.8, 0.5), vec3(1.0, 0.6, 0.3), 0.0) * 0.16;
+    col += bokeh(p, 1.6, 0.02, vec3(1.0, 0.75, 0.45), vec3(1.0, 0.55, 0.25), 9.0) * 0.12;
+    return col + spill(p, vec3(1.0, 0.7, 0.36), vec3(0.77, 0.42, 0.17));
+}
+vec3 rainy(vec2 p) {
+    vec3 col = mix(vec3(0.05, 0.1, 0.2), vec3(0.015, 0.025, 0.05), smoothstep(-1.0, 0.6, p.y));
+    col += bokeh(p + vec2(0.0, -0.4), 4.0, 0.0, vec3(0.3, 0.8, 1.0), vec3(1.0, 0.45, 0.68), 21.0) * 0.22 * smoothstep(0.2, 0.9, p.y);
+    col += bokeh(p + vec2(0.3, -0.4), 4.0, 0.0, vec3(1.0, 0.7, 0.28), vec3(0.6, 0.82, 1.0), 33.0) * 0.18 * smoothstep(0.2, 0.9, p.y);
+    vec2 r = vec2(p.x + p.y * 0.2, p.y);
+    float lane = floor(r.x * 90.0);
+    float fall = fract(r.y * 1.2 - clock * (0.35 + 0.25 * h1(lane)) + h1(lane + 5.0));
+    col += vec3(0.8, 0.9, 1.0) * 0.12 * step(0.88, fall) * step(0.6, h1(lane + 9.0)) * (1.0 - smoothstep(0.0, 0.004, abs(fract(r.x * 90.0) - 0.5) / 90.0));
+    vec2 dc = floor(p * 14.0);
+    vec2 dp = (dc + 0.5 + 0.35 * (vec2(h2(dc), h2(dc + 1.0)) - 0.5)) / 14.0;
+    col += vec3(0.85, 0.92, 1.0) * 0.15 * step(0.8, h2(dc + 7.0)) * smoothstep(0.012, 0.006, length(p - dp));   // drops on the glass
+    return col + spill(p, vec3(0.31, 0.64, 1.0), vec3(0.17, 0.37, 0.7));
+}
+vec3 aurora(vec2 p) {
+    vec3 col = mix(vec3(0.01, 0.025, 0.04), vec3(0.005, 0.015, 0.02), smoothstep(-1.0, 1.0, p.y));
+    for (int k = 0; k < 3; k++) {
+        float fk = float(k);
+        float x = p.x * (0.8 + 0.2 * fk) + 0.25 * sin(p.y * 1.5 + clock * 0.08 + fk * 2.0) + clock * 0.015 * (fk + 1.0);
+        float curtain = pow(fbm(vec2(x * 2.2, fk * 3.0 + clock * 0.03)), 2.2) * smoothstep(0.7, -0.6, p.y) * smoothstep(-1.1, -0.3, p.y);
+        vec3 c = fk < 0.5 ? vec3(0.24, 1.0, 0.69) : (fk < 1.5 ? vec3(0.17, 0.83, 1.0) : vec3(0.61, 0.42, 1.0));
+        col += c * curtain * (0.55 + 0.25 * energy);
+    }
+    col += vec3(0.9) * (sparkle(p, 40.0, 3.0, 0.8) * 0.7 + sparkle(p, 18.0, 7.0, 0.9)) * smoothstep(0.6, -0.2, p.y);
+    float hill1 = 0.83 + 0.05 * sin(p.x * 2.2 + 1.0) + 0.025 * sin(p.x * 6.0);
+    float hill2 = 0.91 + 0.035 * sin(p.x * 3.1 + 3.0) + 0.015 * sin(p.x * 9.0);
+    col = p.y > hill2 ? vec3(0.008, 0.02, 0.016) : (p.y > hill1 ? vec3(0.024, 0.066, 0.05) : col);
+    return col + spill(p, vec3(0.24, 1.0, 0.69), vec3(0.17, 0.83, 1.0));
+}
+
 void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * vec2(aspect, 1.0) * 2.0;
-    vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p) : beach(p);
+    vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p)
+             : style < 4.5 ? beach(p) : style < 5.5 ? club(p) : style < 6.5 ? jazz(p) : style < 7.5 ? rainy(p) : aurora(p);
     fragColor = vec4(min(col, vec3(1.0)), 1.0) * qt_Opacity;
 }
