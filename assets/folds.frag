@@ -236,6 +236,23 @@ vec3 cosmic(vec2 p) {
     float hd = length(p - hc) - 2.35;
     float hx = smoothstep(px2p(vec2(900.0, 0.0)).x, px2p(vec2(1700.0, 0.0)).x, p.x);
     col += mix(c2.rgb, vec3(1.0, 0.9, 0.93), 0.6) * (exp(-hd * hd / 0.00012) * 0.9 + exp(-max(hd, 0.0) / 0.12) * 0.12 * step(0.0, hd)) * hx;
+    // lights on the horizon: a few glints slide slowly along the edge, and small lights twinkle just above it
+    vec2 hq = p - hc;
+    float ha = atan(hq.x, -hq.y);                       // position along the horizon
+    float lights = 0.0;
+    for (int k = 0; k < 4; k++) {
+        float fk = float(k);
+        float at = -0.42 + 0.84 * fract(clock * (0.006 + 0.003 * fk) + fk * 0.27);   // each glint crosses on its own slow loop
+        float da = (ha - at) * 2.35;
+        lights += exp(-da * da / 0.004) * exp(-hd * hd / 0.00012) * (1.6 + 0.6 * sin(clock * 0.9 + fk * 2.0)) + exp(-da * da / 0.03) * exp(-max(hd, 0.0) / 0.05) * step(0.0, hd) * 0.25;
+    }
+    float cell = floor(ha * 110.0);
+    float lamp = step(0.72, h1(cell + 3.0));
+    float above = hd - 0.01 - 0.02 * h1(cell + 7.0);    // lamps sit just above the edge
+    float dot_ = exp(-pow(fract(ha * 110.0) - 0.5, 2.0) / 0.006) * exp(-above * above / 0.00004);
+    float twinkle = 0.35 + 0.65 * smoothstep(0.3, 1.0, sin(clock * (0.4 + h1(cell) * 0.8) + h1(cell + 1.0) * 30.0));
+    lights += lamp * dot_ * twinkle * 1.4;
+    col += mix(c1.rgb, vec3(1.0, 0.92, 0.8), 0.55) * lights * hx * (0.9 + 0.3 * energy);
     return col;
 }
 
