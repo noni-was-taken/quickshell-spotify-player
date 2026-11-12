@@ -23,6 +23,7 @@ layout(binding = 1) uniform sampler2D water;   // ripple heights from ripples.fr
 
 // sin-free hashes (Hoskins), so the patterns stay clean in long sessions
 float h2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float sq(float x) { return x * x; }
 float h1(float n) { return h2(vec2(n, n * 0.37 + 1.7)); }
 float vnoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
@@ -201,8 +202,158 @@ vec3 beach(vec2 p) {
     return floor(col * 20.0 + 0.5) / 20.0;    // finer colour steps: coarse ones drew rings around the sun
 }
 
+// ---- YouTube mode (style 5): a glowing planet arc behind the video, in the chosen palette (c0..c3 = warm, highlight, middle, cool) ----
+vec2 px2p(vec2 px) { return (px / vec2(1920.0, 1080.0) - 0.5) * vec2(aspect, 1.0) * 2.0; }
+vec3 cosmic(vec2 p) {
+    vec3 col = vec3(0.045, 0.042, 0.04);
+    // parallax: each body shifts against the mouse by its depth (the planet is far, the moon nearer, the horizon nearest)
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
+    // the planet rim: a huge circle whose edge sweeps over the video; its colours slowly travel round it
+    // the whole planet drifts slowly and breathes, so the rim wanders around the video
+    vec2 c = px2p(vec2(960.0 + 90.0 * sin(clock * 0.031), 1010.0 + 45.0 * cos(clock * 0.023))) - look * 0.035;
+    float R = (950.0 + 35.0 * sin(clock * 0.017)) / 540.0;
+    vec2 q = p - c;
+    float r = length(q);
+    float ang = atan(q.x, -q.y) / 3.14159;            // -1 left .. 0 top .. 1 right
+    float t = ang + 0.12 * sin(clock * 0.05);
+    vec3 tint = mix(c0.rgb, c1.rgb, smoothstep(-0.75, -0.45, t));
+    tint = mix(tint, c2.rgb, smoothstep(-0.35, 0.05, t));
+    tint = mix(tint, c3.rgb, smoothstep(0.15, 0.55, t));
+    float d = r - R;
+    float rim = exp(-d * d / (0.11 * 0.11)) + 0.45 * exp(-max(d, 0.0) / 0.35) * step(0.0, d) + 0.3 * exp(d / 0.12) * step(d, 0.0);
+    float breathe = 0.85 + 0.15 * sin(clock * 0.3) + 0.25 * energy;
+    col += tint * rim * 0.75 * breathe * smoothstep(0.98, 0.6, abs(ang));
+    col *= mix(0.55, 1.0, smoothstep(-0.05, 0.08, d));   // the planet's body is darker than space
+    // a small glowing moon that travels slowly along the rim, with a flare that pulses with the bass
+    float ma = -0.62 + 0.14 * sin(clock * 0.021);
+    vec2 moon = c + (R + 0.04) * vec2(sin(ma * 3.14159), -cos(ma * 3.14159));
+    moon -= look * 0.04;
+    vec2 m = p - moon;
+    col += c0.rgb * 0.7 * exp(-dot(m, m) / 0.06);
+    vec2 fl = p - (moon + vec2(0.17, -0.05));
+    float flare = exp(-dot(fl, fl) / 0.0012) * (1.2 + 1.5 * energy)
+                + exp(-fl.y * fl.y / 0.00002) * exp(-abs(fl.x) / 0.35) * (0.35 + 0.4 * energy)
+                + exp(-fl.x * fl.x / 0.00002) * exp(-abs(fl.y) / 0.2) * 0.2;
+    col += mix(c1.rgb, vec3(1.0, 0.95, 0.85), 0.6) * flare;
+    // a thin bright horizon in the lower right, drifting slowly
+    vec2 hc = px2p(vec2(1880.0 + 160.0 * sin(clock * 0.027), 2150.0 + 50.0 * cos(clock * 0.019))) - look * 0.09;
+    float hd = length(p - hc) - 2.35;
+    float hx = smoothstep(px2p(vec2(900.0, 0.0)).x, px2p(vec2(1700.0, 0.0)).x, p.x);
+    col += mix(c2.rgb, vec3(1.0, 0.9, 0.93), 0.6) * (exp(-hd * hd / 0.00012) * 0.9 + exp(-max(hd, 0.0) / 0.12) * 0.12 * step(0.0, hd)) * hx;
+    // lights on the horizon: a few glints slide slowly along the edge, and small lights twinkle just above it
+    vec2 hq = p - hc;
+    float ha = atan(hq.x, -hq.y);                       // position along the horizon
+    float lights = 0.0;
+    for (int k = 0; k < 4; k++) {
+        float fk = float(k);
+        float at = -0.42 + 0.84 * fract(clock * (0.006 + 0.003 * fk) + fk * 0.27);   // each glint crosses on its own slow loop
+        float da = (ha - at) * 2.35;
+        lights += exp(-da * da / 0.004) * exp(-hd * hd / 0.00012) * (1.6 + 0.6 * sin(clock * 0.9 + fk * 2.0)) + exp(-da * da / 0.03) * exp(-max(hd, 0.0) / 0.05) * step(0.0, hd) * 0.25;
+    }
+    float cell = floor(ha * 110.0);
+    float lamp = step(0.72, h1(cell + 3.0));
+    float above = hd - 0.01 - 0.02 * h1(cell + 7.0);    // lamps sit just above the edge
+    float dot_ = exp(-sq(fract(ha * 110.0) - 0.5) / 0.006) * exp(-above * above / 0.00004);
+    float twinkle = 0.35 + 0.65 * smoothstep(0.3, 1.0, sin(clock * (0.4 + h1(cell) * 0.8) + h1(cell + 1.0) * 30.0));
+    lights += lamp * dot_ * twinkle * 1.4;
+    col += mix(c1.rgb, vec3(1.0, 0.92, 0.8), 0.55) * lights * hx * (0.9 + 0.3 * energy);
+    return col;
+}
+
+// ---- YouTube mode (style 6): Light rain. A glowing cloud bank pours thin threads of light down the sides. ----
+// c0 warm glow, c1 light colour, c2 cloud shadow, c3 mist
+float threads(vec2 p, float cx, float w, float seed) {
+    float d = abs(p.x - cx);
+    float inG = 1.0 - smoothstep(w * 0.6, w, d);
+    float lane = (p.x - cx) * 130.0;
+    float id = floor(lane);
+    float on = step(0.4, h1(id + seed));
+    float thin = exp(-sq((fract(lane) - 0.5) / 0.16));
+    float top = -0.5 + 0.05 * sin(clock * 0.13 + seed) + 0.03 * h1(id + seed + 2.0);
+    float len = 0.75 + 0.35 * sin(clock * 0.06 + h1(id + seed) * 6.0);      // each thread slowly lengthens and shortens
+    float y = p.y - top;
+    float fall = smoothstep(0.0, 0.05, y) * exp(-max(y, 0.0) / len);
+    float pulse = 0.72 + 0.28 * sin(y * 7.0 - clock * 0.9 + h1(id + seed + 5.0) * 20.0);   // light running down
+    float shimmer = 0.7 + 0.3 * sin(clock * (0.4 + h1(id) * 1.2) + id);
+    return inG * on * thin * fall * pulse * shimmer * (0.55 + 0.6 * h1(id + seed + 9.0));
+}
+float threadGroups(vec2 p) {
+    return threads(p, -1.50, 0.07, 0.0) + threads(p, -1.31, 0.11, 13.0) + threads(p, 1.33, 0.10, 27.0)
+         + threads(p, 1.53, 0.06, 41.0) + threads(p, -0.45, 0.08, 55.0) + threads(p, 0.52, 0.06, 69.0);
+}
+vec3 lightRain(vec2 p) {
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
+    float t = clock * 0.018;
+    vec3 col = mix(c3.rgb * 0.35, c3.rgb, smoothstep(-1.0, 0.6, p.y));     // deep blue sky above, paler blue below
+    col = mix(col, vec3(0.05, 0.05, 0.06), smoothstep(0.55, 1.05, p.y));
+    vec2 g = (p - vec2(0.0, -0.45) + look * 0.03) * vec2(0.55, 1.3);
+    col += c0.rgb * 0.6 * exp(-dot(g, g) / 0.7);                           // the sun glowing gold through the cloud
+    // threads of light, with a slight rainbow fringe (each colour channel offset a hair)
+    vec2 tp = p + look * vec2(0.07, 0.04);
+    vec3 s = vec3(threadGroups(tp + vec2(0.0016, 0.0)), threadGroups(tp), threadGroups(tp - vec2(0.0016, 0.0)));
+    col += c1.rgb * s * 2.0 * (1.0 + 0.35 * energy);
+    col += c0.rgb * 0.06 * (s.r + s.g + s.b);                              // soft haze around them
+    // the cloud bank: billowing along the top, with heavier puffs over the threads at the sides
+    vec2 cp = p + look * 0.05;
+    float n = fbm(cp * 1.7 + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.9);
+    float shape = max(exp(-sq((cp.y + 0.82) / 0.26)),
+                      exp(-(sq((abs(cp.x) - 1.42) / 0.38) + sq((cp.y + 0.55) / 0.22))));
+    float cloud = smoothstep(0.42, 0.72, n * 0.75 + shape * 0.55);
+    vec3 cloudCol = mix(mix(c0.rgb, c1.rgb, 0.4) * 0.9 + 0.08, c2.rgb, smoothstep(0.5, 0.85, n));
+    col = mix(col, cloudCol, cloud * 0.92);
+    // drifting mist low down
+    float mist = fbm(p * 1.1 + vec2(t * 2.5, t)) * smoothstep(-0.1, 0.9, p.y);
+    col = mix(col, c3.rgb * 1.1 + c0.rgb * 0.08, mist * 0.3);
+    return col;
+}
+
+// ---- YouTube mode (style 7): Prism. Sunlight through a window falls across a dark surface, out of focus,
+// splitting into colour at its edges. c0 surface, c1 warm light core, c2 cool fringe, c3 shadow ----
+float lightPatch(vec2 p, vec2 c, vec2 r, float ang) {
+    vec2 q = p - c;
+    q = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * q;
+    float d = length(q / r);
+    return smoothstep(1.0, 0.25, d);
+}
+vec3 prismLight(vec2 p, vec2 c, vec2 r, float ang, float split) {
+    // each colour channel sits a little apart, so the edges fringe blue on one side and orange on the other
+    vec2 dir = vec2(cos(ang + 0.6), sin(ang + 0.6)) * split;
+    return vec3(lightPatch(p + dir, c, r, ang), lightPatch(p, c, r, ang), lightPatch(p - dir * 1.4, c, r * 1.05, ang));
+}
+vec3 prism(vec2 p) {
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
+    vec2 q = p + look * 0.05;
+    // the surface: deep shadow upper left, a lit blue-grey plane lower right
+    float lit = smoothstep(-1.4, 1.2, q.x * 0.55 + q.y * 0.75);
+    vec3 col = mix(c3.rgb, c0.rgb, lit) + c0.rgb * 0.12 * fbm(q * 1.5 + clock * 0.01);
+    // light patches, placed around the video, each drifting slowly on its own path and breathing
+    vec3 light = vec3(0.0);
+    for (int k = 0; k < 8; k++) {
+        float fk = float(k);
+        vec2 home = fk < 0.5 ? vec2(-1.5, 0.62) : fk < 1.5 ? vec2(-1.42, -0.15) : fk < 2.5 ? vec2(0.25, 0.86) : fk < 3.5 ? vec2(-0.55, 0.9)
+                  : fk < 4.5 ? vec2(1.46, 0.3) : fk < 5.5 ? vec2(1.5, 0.78) : fk < 6.5 ? vec2(-0.9, -0.92) : vec2(-1.62, 0.95);
+        vec2 size = fk < 0.5 ? vec2(0.42, 0.28) : fk < 2.5 ? vec2(0.3, 0.13) : fk < 4.5 ? vec2(0.22, 0.12) : vec2(0.18, 0.1);
+        float sp = 0.04 + 0.03 * h1(fk + 1.0);
+        vec2 c = home + vec2(sin(clock * sp + fk * 2.1), cos(clock * sp * 0.8 + fk)) * vec2(0.14, 0.08);
+        vec2 r = size * (1.0 + 0.1 * sin(clock * 0.25 + fk * 1.7));
+        float breathe = 0.7 + 0.3 * sin(clock * (0.15 + 0.1 * h1(fk)) + fk * 2.0);
+        light += prismLight(q, c, r, -0.5 + 0.25 * h1(fk + 11.0), 0.035 + 0.025 * h1(fk + 13.0)) * breathe * (fk < 0.5 ? 1.3 : 1.0);
+    }
+    // window slits: bright bars in the top right, shimmering
+    vec2 wq = q - vec2(1.35, -0.78) - look * 0.04;
+    wq = mat2(cos(-0.42), -sin(-0.42), sin(-0.42), cos(-0.42)) * wq;
+    float slots = smoothstep(0.32, 0.18, abs(fract(wq.y * 4.2 + 0.5) - 0.5) * 2.0 - 0.3) * smoothstep(0.75, 0.2, abs(wq.x)) * smoothstep(0.45, 0.2, abs(wq.y));
+    light += vec3(0.95, 1.0, 1.05) * slots * (0.85 + 0.15 * sin(clock * 0.5));
+    // colour the light: a warm white core, cool fringes where the channels separate
+    vec3 tint = vec3(light.r * c1.r * 1.15, light.g * mix(c1.g, 1.0, 0.4), light.b * mix(c2.b, 1.0, 0.25) * 1.2);
+    col += tint * 1.15 * (1.0 + 0.3 * energy);
+    col += c2.rgb * 0.08 * (light.b - light.r);                       // a faint blue halo outside the warm core
+    return col;
+}
+
 void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * vec2(aspect, 1.0) * 2.0;
-    vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p) : beach(p);
+    vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p)
+             : style < 4.5 ? beach(p) : style < 5.5 ? cosmic(p) : style < 6.5 ? lightRain(p) : prism(p);
     fragColor = vec4(min(col, vec3(1.0)), 1.0) * qt_Opacity;
 }

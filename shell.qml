@@ -2,6 +2,7 @@
 //   qs -c music                         start (autostart.lua does this)
 //   qs -c music ipc call music toggle   open/close (Alt+S)
 //   qs -c music ipc call music search "text"   open with the search already filled in (testing)
+// YouTube mode: shown while a browser Picture-in-Picture window exists; its video is shown live in the middle.
 // Keys: Enter search, Space pause, Left/Right prev/next, D Spotify DJ, B background look, Escape close. In search: Up/Down + Enter plays, Shift+Enter or + adds to the queue, Escape goes back.
 // Closing keeps the music playing (the hidden official Spotify app plays it; it starts on first open, quits after 10 idle minutes).
 // Spotify and LRCLIB calls go through ./spot. assets/ holds the pre-rendered mesh, grain, vignette and record.
@@ -12,6 +13,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Widgets
 import Quickshell.Hyprland
+import Quickshell.Services.Mpris
 
 ShellRoot {
     id: root
@@ -150,8 +152,94 @@ ShellRoot {
         function open(): void { root.open() }
         function close(): void { root.shown = false }
         function style(i: int): void { root.setStyle(i) }
+        function ytstyle(i: int): void { root.ytStyle = i }
         function search(q: string): void { root.open(); root.openSearch(); input.text = q }
     }
+
+    // ---- YouTube mode ----
+    readonly property string pipTitle: Quickshell.env("MUSIC_PIP_TITLE") || "Picture-in-Picture"   // env override is for testing
+    readonly property var pipWindow: Hyprland.toplevels.values.find(t => t.title === pipTitle) ?? null
+    readonly property bool ytMode: pipWindow !== null
+    readonly property var ytPlayer: {
+        const ps = Mpris.players.values.filter(p => /firefox|chrom|brave|vivaldi|zen/i.test(p.identity + " " + p.desktopEntry));
+        return ps.find(p => p.isPlaying) ?? ps[0] ?? null;
+    }
+    readonly property bool ytHasLength: ytPlayer !== null && ytPlayer.lengthSupported && ytPlayer.length > 1    // Firefox often reports no length for YouTube
+    readonly property bool ytPlaying: ytMode && ytPlayer !== null && ytPlayer.isPlaying
+    readonly property var ytStyles: ["Cosmic", "Light rain", "Prism"]
+    readonly property var prismPalettes: [         // surface, warm light, cool fringe, shadow
+        ["#3c4a5c", "#ffd9b0", "#5f8fff", "#0c1118"],
+        ["#45475e", "#ffcaa0", "#7a8cff", "#0e0f19"],
+        ["#3a5058", "#fff0c8", "#4fb0ff", "#0a1416"]
+    ]
+    readonly property var rainPalettes: [          // sun glow (gold), light (gold), cloud shadow (blue), sky (blue)
+        ["#e0a040", "#ffd37a", "#3c5a86", "#2a4a78"],
+        ["#e8b450", "#ffe2a0", "#36507a", "#24406c"],
+        ["#d89a3a", "#ffcc6a", "#425f8c", "#2e5080"]
+    ]
+    readonly property var ytPalettes: [            // warm, highlight, middle, cool
+        ["#ff5a1f", "#ffb15a", "#2f8a4a", "#1d5f86"],
+        ["#ff3d7f", "#ffb347", "#7a3cff", "#2a3a9a"],
+        ["#1fb5c9", "#7ff0d8", "#2a5fb8", "#3a2a7a"],
+        ["#ff7a1a", "#ffd27a", "#b3361f", "#5a2a12"]
+    ]
+    // Cosmic: the colours slowly travel through these palettes, about 40 seconds each, blending in between
+    function mixc(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1); }
+    function cosmicColor(k) {      // the current YouTube theme's colours, slowly travelling through its palettes
+        const pal = ytStyle === 1 ? rainPalettes : ytStyle === 2 ? prismPalettes : ytPalettes;
+        const ph = (seconds / (ytStyle === 0 ? 40 : 60)) % pal.length;
+        const i = Math.floor(ph), t = ph - i, e = t * t * (3 - 2 * t);
+        return mixc(pal[i][k], pal[(i + 1) % pal.length][k], e);
+    }
+    readonly property string monoFont: "JetBrainsMono Nerd Font"
+    readonly property color ink: "#ead8b8"
+    property int ytStyle: 0
+    // While the player shows it, the Picture-in-Picture window is made full size (sharp video) and tucked away on a
+    // hidden workspace; when the player closes it goes back to where it was, at its old size.
+    readonly property bool pipInUse: shown && ytMode
+    property var pipSaved: null
+    function hypr(expr) { Quickshell.execDetached(["hyprctl", "dispatch", expr]); }
+    onPipInUseChanged: {
+        if (pipInUse) {
+            pipInfo.addr = "0x" + pipWindow.address;
+            pipInfo.running = true;     // read its current place fresh (the cached copy can be out of date), then tuck it away
+        } else if (pipSaved) {
+            const p = pipSaved;
+            pipSaved = null;
+            if (!Hyprland.toplevels.values.some(t => "address:0x" + t.address === p.addr)) return;
+            const ws = p.ws ? p.ws : String(Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.name : 1);
+            hypr('hl.dsp.window.move({ workspace = "' + ws + '", window = "' + p.addr + '", follow = false })');
+            hypr('hl.dsp.window.resize({ x = ' + p.size[0] + ', y = ' + p.size[1] + ', window = "' + p.addr + '" })');
+            if (p.at) hypr('hl.dsp.window.move({ x = ' + p.at[0] + ', y = ' + p.at[1] + ', window = "' + p.addr + '" })');
+            if (p.pinned) hypr('hl.dsp.window.pin({ action = "enable", window = "' + p.addr + '" })');
+        }
+    }
+    function tuckPip(c) {
+        const a = "address:" + c.address;
+        pipSaved = { addr: a, size: c.size, at: c.at, pinned: c.pinned === true, ws: c.workspace ? c.workspace.name : "" };
+            captureReady = false;
+            hypr('hl.dsp.window.pin({ action = "disable", window = "' + a + '" })');      // Firefox pins it; pinned windows can't change workspace
+            hypr('hl.dsp.window.float({ action = "enable", window = "' + a + '" })');
+            hypr('hl.dsp.window.resize({ x = 1920, y = 1080, window = "' + a + '" })');
+            hypr('hl.dsp.window.move({ workspace = "special:pip", window = "' + a + '", follow = false })');
+            captureDelay.restart();     // start capturing once the window has its new size
+    }
+    Process {
+        id: pipInfo
+        property string addr: ""
+        command: ["hyprctl", "clients", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let c = null;
+                try { c = JSON.parse(text).find(w => w.address === pipInfo.addr); } catch (e) {}
+                if (c && root.pipInUse) root.tuckPip(c);
+            }
+        }
+    }
+    property bool captureReady: false
+    Timer { id: captureDelay; interval: 450; onTriggered: root.captureReady = true }
+    function ytToggle() { if (ytPlayer) ytPlayer.togglePlaying(); }
+    Timer { running: root.shown && root.ytMode && root.ytPlayer !== null; interval: 500; repeat: true; onTriggered: root.ytPlayer.positionChanged() }
 
     property real lastTick: 0
     Timer {     // smooth position between polls
@@ -182,11 +270,16 @@ ShellRoot {
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
     // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
-    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach"]
+    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach", "Cosmic"]
+    // Cosmic on the Spotify player follows the genre: its rim colours come from the genre palette
+    readonly property var cosmicSpotify: [Qt.lighter(c1, 1.6), Qt.lighter(c2, 1.4), Qt.lighter(c3, 1.6), Qt.lighter(c1, 1.1)]
     property int bgStyle: 0
     property real seconds: 0
     property string styleNote: ""
-    function nextStyle() { setStyle((bgStyle + 1) % bgStyles.length); }
+    function nextStyle() {
+        if (ytMode) { ytStyle = (ytStyle + 1) % ytStyles.length; styleNote = "Background: " + ytStyles[ytStyle]; styleTimer.restart(); }
+        else setStyle((bgStyle + 1) % bgStyles.length);
+    }
     function setStyle(i) { bgStyle = i; styleNote = "Background: " + bgStyles[i]; styleTimer.restart(); }
     Timer { id: styleTimer; interval: 1500; onTriggered: root.styleNote = "" }
     readonly property real fabricAmount: 0.28  // raise for a stronger pull, 0 turns it off
@@ -211,7 +304,7 @@ ShellRoot {
         running: root.shown
         onTriggered: {
             const dt = Math.min(0.05, frameTime);
-            const bass = root.playing && root.bars.length ? ((root.bars[0] || 0) + (root.bars[1] || 0) + (root.bars[2] || 0)) / 300 : 0;
+            const bass = (root.playing || root.ytPlaying) && root.bars.length ? ((root.bars[0] || 0) + (root.bars[1] || 0) + (root.bars[2] || 0)) / 300 : 0;
             const target = Math.min(1, bass * root.beatAmount);
             root.energy += (target - root.energy) * (1 - Math.exp(-dt * (target > root.energy ? 5 : 1.6)));
             root.flow += dt * (0.24 + 0.3 * root.energy);
@@ -223,7 +316,7 @@ ShellRoot {
             // On a bass hit, a small "quake": 3 to 5 jolts close together in a random area, a moment apart
             root.slowEnergy += (root.energy - root.slowEnergy) * (1 - Math.exp(-dt * 1.5));
             // a hit = the bass jumping above its recent level (comparing frame to frame missed hits at 144 Hz)
-            if (root.bgStyle === 1 && root.energy - root.slowEnergy > 0.08 && root.seconds > root.quakeReadyAt) {
+            if (root.bgStyle === 1 && !root.ytMode && root.energy - root.slowEnergy > 0.08 && root.seconds > root.quakeReadyAt) {
                 if (root.quakeBag.length === 0)       // deal the screen out in a 4x3 grid, shuffled, so quakes spread evenly
                     root.quakeBag = [...Array(12).keys()].sort(() => Math.random() - 0.5);
                 const cell = root.quakeBag.pop();
@@ -242,7 +335,7 @@ ShellRoot {
     }
 
     Process {
-        running: root.shown && root.playing
+        running: root.shown && (root.playing || root.ytPlaying)
         command: ["cava", "-p", root.dir + "/cava.conf"]
         stdout: SplitParser { onRead: data => root.bars = data.split(";").filter(v => v !== "").map(Number) }
         onRunningChanged: if (!running) root.bars = []
@@ -322,7 +415,7 @@ ShellRoot {
         // Only exists while the player is open on that background: moving it between monitors crashes Qt.
         Loader {
             id: rippleLoader
-            active: root.shown && root.bgStyle === 1
+            active: root.shown && root.bgStyle === 1 && !root.ytMode
             sourceComponent: Item {
                 property alias texture: ripples
                 ShaderEffectSource {
@@ -358,7 +451,7 @@ ShellRoot {
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
-            property real style: root.bgStyle
+            property real style: root.ytMode ? 5 + root.ytStyle : root.bgStyle
             property real clock: root.seconds
             property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
@@ -376,17 +469,18 @@ ShellRoot {
                     else root.pointer = root.lag = root.slowPointer = Qt.vector2d(99, 99);
                 }
             }
-            property color c0: root.c0
-            property color c1: root.c1
-            property color c2: root.c2
-            property color c3: root.c3
+            property color c0: root.ytMode ? root.cosmicColor(0) : root.bgStyle === 5 ? root.cosmicSpotify[0] : root.c0
+            property color c1: root.ytMode ? root.cosmicColor(1) : root.bgStyle === 5 ? root.cosmicSpotify[1] : root.c1
+            property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.c2
+            property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.c3
             layer.enabled: true                     // drawn small and stretched: the look is soft, and it keeps the GPU cost low
-            layer.textureSize: Qt.size(960, 540)
+            layer.textureSize: root.ytMode ? Qt.size(1920, 1080) : Qt.size(960, 540)   // full size in YouTube mode, for thin lines
             layer.smooth: true
         }
-        Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image { visible: !root.ytMode; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
         Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
             id: grain
+            visible: !root.ytMode
             x: -220; y: -220; width: parent.width + 220; height: parent.height + 220
             source: "file://" + root.dir + "/assets/grain.png"; fillMode: Image.Tile; opacity: 0.3
             horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop
@@ -395,7 +489,17 @@ ShellRoot {
                 onTriggered: { grain.x = -Math.floor(Math.random() * 220); grain.y = -Math.floor(Math.random() * 220); }
             }
         }
-        Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
+        ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
+            anchors.fill: parent
+            visible: root.ytMode && root.ytStyle !== 1      // Light rain has no filter
+            fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
+            property real clock: root.seconds
+            property vector2d size: Qt.vector2d(width, height)
+            property real grain: root.ytStyle === 2 ? 0.07 : 0.13
+            property real lines: 0
+            property real edge: 0
+        }
+        Image { visible: !(root.ytMode && root.ytStyle === 1); anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
 
         // ---- everything else is laid out at 1920x1080 and scaled to the screen ----
         Item {
@@ -407,7 +511,7 @@ ShellRoot {
                 Keys.onReturnPressed: root.openSearch()
                 Keys.onEnterPressed: root.openSearch()
                 Keys.onEscapePressed: root.shown = false
-                Keys.onSpacePressed: root.control(["toggle"])
+                Keys.onSpacePressed: root.ytMode ? root.ytToggle() : root.control(["toggle"])
                 Keys.onLeftPressed: root.control(["prev"])
                 Keys.onRightPressed: root.control(["next"])
                 Keys.onPressed: e => { if (e.key === Qt.Key_D) root.startDj(); else if (e.key === Qt.Key_B) root.nextStyle(); }
@@ -415,6 +519,7 @@ ShellRoot {
 
             // left column: title, record, queue
             Column {
+                visible: !root.ytMode
                 x: 110; width: 440
                 y: root.upNext.length > 0 ? 136 : 262        // no queue (DJ mode): centre the title and record vertically
                 Behavior on y { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
@@ -475,6 +580,7 @@ ShellRoot {
 
             // lyrics: one tall column that slides, so the centre line is always the focused one
             Item {
+                visible: !root.ytMode
                 x: 860; y: 200; width: 760; height: 680
                 clip: true
                 property real scrolled: 0       // plain (untimed) lyrics scroll with the wheel
@@ -526,8 +632,258 @@ ShellRoot {
                 text: root.styleNote; font.pixelSize: 18; opacity: root.styleNote ? 0.85 : 0
                 Behavior on opacity { NumberAnimation { duration: 250 } } }
 
+            // ---- YouTube mode: the Picture-in-Picture video in a frame of dark panels, hairlines and mono labels ----
+            Item {
+                visible: root.ytMode
+                anchors.fill: parent
+                component Mono: Text {
+                    font.family: root.ytStyle === 0 ? root.monoFont : root.fontName; font.weight: Font.Light; font.pixelSize: 12; font.letterSpacing: 7
+                    font.capitalization: Font.AllUppercase
+                    color: root.ink
+                }
+                // dark panels with thin gaps; the corners facing the video are cut round so the glow curls around it
+                Repeater {
+                    model: root.ytStyle !== 0 ? [] : [
+                        [2, 2, 302, 92, 0, 0, 120, 0], [308, 2, 1304, 92, 0, 0, 0, 0], [1616, 2, 302, 92, 0, 0, 0, 120],
+                        [2, 98, 302, 744, 0, 0, 0, 0], [1616, 98, 302, 744, 0, 0, 0, 0],
+                        [2, 846, 302, 232, 0, 120, 0, 0], [308, 846, 1304, 232, 0, 0, 0, 0], [1616, 846, 302, 232, 120, 0, 0, 0]
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        x: modelData[0]; y: modelData[1]; width: modelData[2]; height: modelData[3]
+                        topLeftRadius: modelData[4]; topRightRadius: modelData[5]; bottomRightRadius: modelData[6]; bottomLeftRadius: modelData[7]
+                        color: Qt.rgba(0.043, 0.039, 0.047, 0.55)
+                    }
+                }
+                // Parallax: each layer shifts with the mouse (slowly) and a gentle drift; nearer layers move more
+                readonly property vector2d look: root.slowPointer.x > 90 ? Qt.vector2d(0, 0) : root.slowPointer
+                readonly property real driftX: Math.sin(root.seconds * 0.07) * 0.5 + Math.sin(root.seconds * 0.031) * 0.5
+                readonly property real driftY: Math.cos(root.seconds * 0.053) * 0.6 + Math.sin(root.seconds * 0.019) * 0.4
+                component Layer: Item {
+                    required property real depth
+                    width: 1920; height: 1080
+                    x: -(parent.look.x * 26 + parent.driftX * 14) * depth
+                    y: -(parent.look.y * 18 + parent.driftY * 10) * depth
+                }
+                Layer {         // far: long hairlines
+                    visible: root.ytStyle === 0
+                    depth: 0.5
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            const g = getContext("2d");
+                            g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.16); g.lineWidth = 1;
+                            for (const l of [[-40, 250, 200, 250], [1700, -40, 1960, 200], [-40, 520, 200, 760], [200, 760, -40, 760], [1720, 950, 1960, 950], [1720, 950, 1720, 1120]]) {
+                                g.beginPath(); g.moveTo(l[0], l[1]); g.lineTo(l[2], l[3]); g.stroke();
+                            }
+                        }
+                    }
+                }
+                Layer {         // near: circle markers
+                    visible: root.ytStyle === 0
+                    depth: 1.2
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            const g = getContext("2d");
+                            g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.45); g.lineWidth = 1.2;
+                            for (const c of [[60, 40], [96, 40], [132, 40], [1860, 40], [60, 1040], [132, 1040], [1860, 1040], [1860, 560], [1860, 700], [60, 640]]) {
+                                g.beginPath(); g.arc(c[0], c[1], 4, 0, Math.PI * 2); g.stroke();
+                            }
+                        }
+                    }
+                }
+                Canvas {        // the video's corner brackets stay put: they frame the video
+                    visible: root.ytStyle === 0
+                    anchors.fill: parent
+                    onPaint: {
+                        const g = getContext("2d");
+                        g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.6); g.lineWidth = 1.4;
+                        const x0 = 306, y0 = 96, x1 = 1614, y1 = 844, k = 22;
+                        for (const b of [[x0, y0 + k, x0, y0, x0 + k, y0], [x1 - k, y0, x1, y0, x1, y0 + k], [x0, y1 - k, x0, y1, x0 + k, y1], [x1 - k, y1, x1, y1, x1, y1 - k]]) {
+                            g.beginPath(); g.moveTo(b[0], b[1]); g.lineTo(b[2], b[3]); g.lineTo(b[4], b[5]); g.stroke();
+                        }
+                    }
+                }
+                Rectangle { x: 320; y: 110; width: 1280; height: 720; color: "#050505" }
+                ScreencopyView {
+                    id: pipView
+                    readonly property real fit: sourceSize.width > 0 ? Math.min(1280 / sourceSize.width, 720 / sourceSize.height) : 1
+                    x: 320 + (1280 - width) / 2; y: 110 + (720 - height) / 2
+                    width: sourceSize.width * fit; height: sourceSize.height * fit
+                    captureSource: root.shown && root.ytMode && root.captureReady ? root.pipWindow.wayland : null
+                    live: true
+                    onStopped: { root.captureReady = false; captureDelay.restart(); }    // the capture breaks if the window resizes: start it again
+                }
+                ShaderEffect {      // the video's own filter: grain, fine scanlines and a soft edge, so it matches the scene
+                    x: pipView.x; y: pipView.y; width: pipView.width; height: pipView.height
+                    visible: pipView.hasContent && root.ytStyle === 0
+                    fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
+                    property real clock: root.seconds
+                    property vector2d size: Qt.vector2d(width, height)
+                    property real grain: 0.09
+                    property real lines: 0.12
+                    property real edge: 0.35
+                }
+                // labels
+                Mono { visible: root.ytStyle === 0; x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
+                Mono { visible: root.ytStyle === 0; x: 60; y: 72; text: "YouTube"; opacity: 0.85 }
+                Mono { visible: root.ytStyle === 0; x: 1700; y: 54; text: "Theme"; font.pixelSize: 11; opacity: 0.4 }
+                Mono { visible: root.ytStyle === 0; x: 1700; y: 72; text: root.ytStyles[root.ytStyle]; font.pixelSize: 11; opacity: 0.75 }
+                Mono { visible: root.ytStyle === 0; x: 60; y: 1034; text: "Press B / next theme"; font.pixelSize: 10; opacity: 0.4 }
+                // Light rain: editorial type, a large italic serif title with a small sans channel line and a date block
+                Item {
+                    visible: root.ytStyle === 1
+                    anchors.fill: parent
+                    Text { x: 300; y: 846; text: "\u201C"; font.family: "Noto Serif Display"; font.weight: Font.Light; font.pixelSize: 72; color: "#f3e7d4"; opacity: 0.55 }
+                    Text {
+                        x: 350; y: 860; width: 980; elide: Text.ElideRight
+                        text: root.ytPlayer ? root.ytPlayer.trackTitle : ""
+                        font.family: "Noto Serif Display"; font.weight: Font.Light; font.italic: true; font.pixelSize: 46
+                        color: "#f6ecdc"
+                    }
+                    Text {
+                        x: 352; y: 922; width: 900; elide: Text.ElideRight
+                        text: root.ytPlayer ? root.ytPlayer.trackArtist : ""
+                        font.family: root.fontName; font.pixelSize: 15; font.letterSpacing: 1; color: "#f3e7d4"; opacity: 0.75
+                    }
+                    Column {
+                        x: 1460; y: 868; spacing: 2
+                        Text { text: Qt.formatDate(clockNow.date, "dd") + "  \u00B7  " + Qt.formatDate(clockNow.date, "MM"); font.family: root.fontName; font.weight: Font.DemiBold; font.pixelSize: 18; color: "#f6ecdc" }
+                        Text { text: "( " + Qt.formatDate(clockNow.date, "dddd") + ", " + Qt.formatTime(clockNow.date, "hh:mm") + " )"; font.family: root.fontName; font.pixelSize: 12; color: "#f3e7d4"; opacity: 0.7 }
+                    }
+                    Text { x: 1460; y: 940; text: "now listening"; font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 15; color: "#f3e7d4"; opacity: 0.6 }
+                    SystemClock { id: clockNow; precision: SystemClock.Minutes }
+                    Text { x: 1700; y: 52; text: "light rain"; font.family: "Noto Serif Display"; font.italic: true; font.weight: Font.Light; font.pixelSize: 22; color: "#f6ecdc"; opacity: 0.8 }
+                    Text { x: 60; y: 1030; text: "press b for another sky"; font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 14; color: "#f3e7d4"; opacity: 0.5 }
+                    // progress: a thin thread of light, brighter where played, with a soft glow at the playhead
+                    Item {
+                        x: 352; y: 984; width: 1060; height: 24
+                        readonly property real f: root.ytHasLength ? root.ytPlayer.position / root.ytPlayer.length : 0
+                        property real wander: 0      // when the length is unknown, the glow drifts slowly to and fro
+                        SequentialAnimation on wander { running: root.shown && root.ytMode && !root.ytHasLength; loops: Animation.Infinite
+                            NumberAnimation { from: 0.05; to: 0.95; duration: 9000; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 0.95; to: 0.05; duration: 9000; easing.type: Easing.InOutSine } }
+                        readonly property real at: root.ytHasLength ? f : wander
+                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 1; color: "#f3e7d4"; opacity: 0.22 }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter; width: parent.width * (root.ytHasLength ? parent.f : 0); height: 1.5
+                            gradient: Gradient { orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: Qt.rgba(1, 0.92, 0.75, 0.15) } GradientStop { position: 1; color: Qt.rgba(1, 0.95, 0.85, 0.95) } }
+                        }
+                        Rectangle { x: parent.width * parent.at - 30; anchors.verticalCenter: parent.verticalCenter; width: 60; height: 20; radius: 10
+                            gradient: Gradient { orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "transparent" } GradientStop { position: 0.5; color: Qt.rgba(1, 0.9, 0.7, 0.35) } GradientStop { position: 1; color: "transparent" } } }
+                        Rectangle { x: parent.width * parent.at - 3; anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: "#fff4e0" }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: m => { if (root.ytHasLength && root.ytPlayer.canSeek) root.ytPlayer.position = m.x / width * root.ytPlayer.length; } }
+                    }
+                    Text {
+                        x: 1430; y: 978; text: (root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + "  /  " + root.clock(root.ytPlayer.length * 1000) + "   " : "") + (root.ytPlaying ? "pause" : "play")
+                        font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 17; color: "#f6ecdc"; opacity: 0.85
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle() }
+                    }
+                }
+                // Prism: small plain type set sideways in two columns, like a flyer
+                Item {
+                    visible: root.ytStyle === 2
+                    anchors.fill: parent
+                    component Side: Text { font.family: root.fontName; font.pixelSize: 15; color: "#f2f4f8"; rotation: -90; transformOrigin: Item.TopLeft }
+                    // title and details under the video, in two small columns like the flyer
+                    component Flat: Text { font.family: root.fontName; font.pixelSize: 16; color: "#f2f4f8" }
+                    Column {
+                        x: 320; y: 870; width: 900; spacing: 4
+                        Flat { text: Qt.formatDate(clockNow.date, "dd MMM") + " - " + Qt.formatDate(clockNow.date, "dddd"); opacity: 0.75 }
+                        Flat { width: parent.width; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle.toUpperCase() : ""; font.pixelSize: 22 }
+                    }
+                    Column {
+                        x: 1260; y: 870; width: 340; spacing: 4
+                        Flat { text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + " / " + root.clock(root.ytPlayer.length * 1000) : "Now playing"; opacity: 0.75 }
+                        Flat { width: parent.width; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 22 }
+                    }
+                    Side { x: 1738; y: 1000; text: root.ytPlaying ? "PAUSE" : "PLAY"; font.letterSpacing: 4; font.pixelSize: 12
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle() } }
+                    Side { x: 1738; y: 220; text: "PRISM  /  B"; font.letterSpacing: 4; font.pixelSize: 11; opacity: 0.55 }
+                    // progress: a thin vertical line that fills upward, edged in blue and orange like the light
+                    Item {
+                        x: 1748; y: 240; width: 6; height: 680
+                        readonly property real f: root.ytHasLength ? root.ytPlayer.position / root.ytPlayer.length : 0
+                        property real breathe: 0
+                        SequentialAnimation on breathe { running: root.shown && root.ytMode && !root.ytHasLength; loops: Animation.Infinite
+                            NumberAnimation { from: 0; to: 1; duration: 4000; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1; to: 0; duration: 4000; easing.type: Easing.InOutSine } }
+                        Rectangle { x: 2; width: 1; height: parent.height; color: "#f2f4f8"; opacity: 0.2 + (root.ytHasLength ? 0 : 0.25 * parent.breathe) }
+                        Rectangle { x: 0; y: parent.height * (1 - parent.f); width: 1; height: parent.height * parent.f; color: "#6f9bff"; opacity: 0.8 }
+                        Rectangle { x: 2; y: parent.height * (1 - parent.f); width: 1.5; height: parent.height * parent.f; color: "#ffffff" }
+                        Rectangle { x: 4; y: parent.height * (1 - parent.f); width: 1; height: parent.height * parent.f; color: "#ffb070"; opacity: 0.8 }
+                        MouseArea { x: -10; width: 26; height: parent.height; cursorShape: Qt.PointingHandCursor
+                            onClicked: m => { if (root.ytHasLength && root.ytPlayer.canSeek) root.ytPlayer.position = (1 - m.y / height) * root.ytPlayer.length; } }
+                    }
+                }
+                Layer {         // middle: coordinates that keep reading out new values, like an instrument
+                    visible: root.ytStyle === 0
+                    depth: 0.8
+                    readonly property real lat: 12.3641 + 0.35 * Math.sin(root.seconds * 0.043) + 0.04 * Math.sin(root.seconds * 0.71)
+                    readonly property real lon: 13.8277 + 0.5 * Math.cos(root.seconds * 0.037) + 0.05 * Math.sin(root.seconds * 0.63)
+                    Mono { x: 1890; y: 360; text: parent.lat.toFixed(4) + "° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft; font.features: ({ "tnum": 1 }) }
+                    Mono { x: 1660; y: 780; text: parent.lon.toFixed(4) + "° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; font.features: ({ "tnum": 1 }) }
+                    Mono { x: 60; y: 700; text: "Signal " + (60 + 35 * root.energy + 4 * Math.sin(root.seconds * 1.3)).toFixed(1); font.pixelSize: 10; font.letterSpacing: 6; opacity: 0.35; font.features: ({ "tnum": 1 }) }
+                    Mono { x: 60; y: 720; text: "Orbit " + ((root.seconds * 0.9) % 360).toFixed(1) + "°"; font.pixelSize: 10; font.letterSpacing: 6; opacity: 0.35; font.features: ({ "tnum": 1 }) }
+                }
+                                Mono { visible: root.ytStyle === 0; x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
+                Mono { visible: root.ytStyle === 0; x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
+                // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
+                Item {
+                    visible: root.ytStyle === 0
+                    x: 360; y: 975; width: 1240; height: 24
+                    MouseArea { x: -40; width: 30; height: 24; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle()
+                        Mono { anchors.centerIn: parent; text: root.ytPlaying ? "||" : "▶"; font.letterSpacing: 0; font.pixelSize: 14 } }
+                    Mono { id: tStart; anchors.verticalCenter: parent.verticalCenter; text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) : "--:--"; font.letterSpacing: 6; opacity: 0.75 }
+                    Mono { id: tEnd; anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: root.ytHasLength ? root.clock(root.ytPlayer.length * 1000) : "--:--"; font.letterSpacing: 6; opacity: 0.75 }
+                    Item {
+                        id: barcode
+                        anchors { left: tStart.right; leftMargin: 18; right: tEnd.left; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                        height: 22
+                        readonly property int count: Math.max(0, Math.floor(width / 6.6))
+                        readonly property real played: root.ytHasLength ? root.ytPlayer.position / root.ytPlayer.length : -1
+                        property real scan: 0
+                        NumberAnimation on scan { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.shown && root.ytMode && !root.ytHasLength }
+                        Repeater {
+                            model: barcode.count
+                            Rectangle {
+                                required property int index
+                                x: index * 6.6; width: index * 7 % 5 === 0 ? 2.4 : 1.2; height: 22
+                                color: root.ink
+                                opacity: barcode.played >= 0 ? (index < barcode.played * barcode.count ? 0.9 : 0.22)
+                                                              : 0.22 + 0.5 * Math.exp(-Math.pow((index / barcode.count - barcode.scan) * 12, 2))
+                            }
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: m => { if (root.ytHasLength && root.ytPlayer.canSeek) root.ytPlayer.position = m.x / width * root.ytPlayer.length; } }
+                    }
+                }
+                // sparkles that twinkle
+                Repeater {
+                    model: root.ytStyle === 0 ? [[1618, 92, 28, 0.95, 3100], [200, 900, 20, 0.8, 4300], [1760, 620, 16, 0.6, 3700], [150, 420, 14, 0.6, 5200]] : []
+                    Text {
+                        required property var modelData
+                        required property int index
+                        property real drift: 0
+                        NumberAnimation on drift { from: 0; to: Math.PI * 2; duration: 23000 + index * 7000; loops: Animation.Infinite; running: root.shown && root.ytMode }
+                        x: modelData[0] - modelData[2] / 2 + 60 * Math.sin(drift + index); y: modelData[1] - modelData[2] * 0.6 + 40 * Math.cos(drift * 2 + index)
+                        text: "✦"; font.pixelSize: modelData[2]; color: "#f4e6ff"
+                        SequentialAnimation on opacity {
+                            running: root.shown && root.ytMode; loops: Animation.Infinite
+                            NumberAnimation { from: modelData[3]; to: modelData[3] * 0.25; duration: modelData[4]; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: modelData[3] * 0.25; to: modelData[3]; duration: modelData[4]; easing.type: Easing.InOutSine }
+                        }
+                    }
+                }
+            }
+
             // flat media controls
             Row {
+                visible: !root.ytMode
                 anchors { bottom: parent.bottom; bottomMargin: 38; horizontalCenter: parent.horizontalCenter }
                 spacing: 20
                 IconButton { anchors.verticalCenter: parent.verticalCenter; icon: "back"; onClicked: root.control(["prev"]) }
