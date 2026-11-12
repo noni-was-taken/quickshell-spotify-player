@@ -23,6 +23,7 @@ layout(binding = 1) uniform sampler2D water;   // ripple heights from ripples.fr
 
 // sin-free hashes (Hoskins), so the patterns stay clean in long sessions
 float h2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float sq(float x) { return x * x; }
 float h1(float n) { return h2(vec2(n, n * 0.37 + 1.7)); }
 float vnoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
@@ -252,7 +253,7 @@ vec3 cosmic(vec2 p) {
     float cell = floor(ha * 110.0);
     float lamp = step(0.72, h1(cell + 3.0));
     float above = hd - 0.01 - 0.02 * h1(cell + 7.0);    // lamps sit just above the edge
-    float dot_ = exp(-pow(fract(ha * 110.0) - 0.5, 2.0) / 0.006) * exp(-above * above / 0.00004);
+    float dot_ = exp(-sq(fract(ha * 110.0) - 0.5) / 0.006) * exp(-above * above / 0.00004);
     float twinkle = 0.35 + 0.65 * smoothstep(0.3, 1.0, sin(clock * (0.4 + h1(cell) * 0.8) + h1(cell + 1.0) * 30.0));
     lights += lamp * dot_ * twinkle * 1.4;
     col += mix(c1.rgb, vec3(1.0, 0.92, 0.8), 0.55) * lights * hx * (0.9 + 0.3 * energy);
@@ -267,7 +268,7 @@ float threads(vec2 p, float cx, float w, float seed) {
     float lane = (p.x - cx) * 130.0;
     float id = floor(lane);
     float on = step(0.4, h1(id + seed));
-    float thin = exp(-pow((fract(lane) - 0.5) / 0.16, 2.0));
+    float thin = exp(-sq((fract(lane) - 0.5) / 0.1));
     float top = -0.5 + 0.05 * sin(clock * 0.13 + seed) + 0.03 * h1(id + seed + 2.0);
     float len = 0.75 + 0.35 * sin(clock * 0.06 + h1(id + seed) * 6.0);      // each thread slowly lengthens and shortens
     float y = p.y - top;
@@ -283,7 +284,7 @@ float threadGroups(vec2 p) {
 vec3 lightRain(vec2 p) {
     vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
     float t = clock * 0.018;
-    vec3 col = mix(vec3(0.055, 0.055, 0.065), c3.rgb * 0.75, smoothstep(-0.95, 0.25, p.y));
+    vec3 col = mix(vec3(0.035, 0.036, 0.045), c3.rgb * 0.6, smoothstep(-0.3, 0.7, p.y));      // dark sky above, warmer haze below
     col = mix(col, vec3(0.05, 0.05, 0.06), smoothstep(0.55, 1.05, p.y));
     vec2 g = (p - vec2(0.0, -0.45) + look * 0.03) * vec2(0.55, 1.3);
     col += c0.rgb * 0.32 * exp(-dot(g, g) / 0.55);                         // warm light inside the cloud
@@ -291,18 +292,26 @@ vec3 lightRain(vec2 p) {
     vec2 tp = p + look * vec2(0.07, 0.04);
     vec3 s = vec3(threadGroups(tp + vec2(0.0016, 0.0)), threadGroups(tp), threadGroups(tp - vec2(0.0016, 0.0)));
     col += c1.rgb * s * 1.5 * (1.0 + 0.35 * energy);
-    col += c0.rgb * 0.06 * (s.r + s.g + s.b);                              // soft haze around them
-    // the cloud bank: billowing along the top, with heavier puffs over the threads at the sides
+    col += c0.rgb * 0.03 * (s.r + s.g + s.b);                              // a little haze around them
+    // the cloud bank: crisp, detailed billows along the top, with heavier puffs over the threads at the sides
     vec2 cp = p + look * 0.05;
-    float n = fbm(cp * 1.7 + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.9);
-    float shape = max(exp(-pow((cp.y + 0.82) / 0.26, 2.0)),
-                      exp(-(pow((abs(cp.x) - 1.42) / 0.38, 2.0) + pow((cp.y + 0.55) / 0.22, 2.0))));
-    float cloud = smoothstep(0.42, 0.72, n * 0.75 + shape * 0.55);
-    vec3 cloudCol = mix(mix(c0.rgb, c1.rgb, 0.4) * 0.9 + 0.08, c2.rgb, smoothstep(0.5, 0.85, n));
-    col = mix(col, cloudCol, cloud * 0.92);
+    vec2 w = cp + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.6;
+    float n = fbm(w * 1.7) * 0.7 + fbm(w * 5.0 + 3.0) * 0.22 + fbm(w * 13.0 + 7.0) * 0.08;   // fine detail on the edges
+    float shape = max(exp(-sq((cp.y + 1.06) / 0.17)),
+                      exp(-(sq((abs(cp.x) - 1.5) / 0.3) + sq((cp.y + 0.5) / 0.3))));
+    float dens = n * 0.75 + shape * 0.55;
+    float cloud = smoothstep(0.545, 0.565, dens);                           // a sharp silhouette
+    // light from below and behind: brighter where the cloud thins toward its lower edge, shadowed inside
+    vec2 up = vec2(0.0, -0.025);
+    float dUp = fbm((w + up) * 1.7) * 0.7 + fbm((w + up) * 5.0 + 3.0) * 0.22 + shape * 0.55;
+    float rim = smoothstep(0.0, 0.08, dens - (dUp * 0.75 + shape * 0.0)) ;
+    float inner = smoothstep(0.42, 0.68, n);        // shade by the billow texture, so the cloud has volume
+    vec3 cloudCol = mix(mix(c1.rgb, vec3(1.0), 0.45) * 0.88, c2.rgb * 1.15, inner);     // pale lit cream, blue-grey shadow
+    cloudCol += mix(c1.rgb, vec3(1.0), 0.3) * (rim * 0.35 + smoothstep(0.62, 0.55, dens) * 0.3) * (1.0 - inner * 0.6);   // glowing lower edge
+    col = mix(col, cloudCol, cloud);
     // drifting mist low down
     float mist = fbm(p * 1.1 + vec2(t * 2.5, t)) * smoothstep(-0.1, 0.9, p.y);
-    col = mix(col, c3.rgb * 1.1 + c0.rgb * 0.08, mist * 0.3);
+    col = mix(col, c3.rgb * 1.1 + c0.rgb * 0.08, mist * 0.12);
     return col;
 }
 
