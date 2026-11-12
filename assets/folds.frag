@@ -221,9 +221,9 @@ vec3 cosmic(vec2 p) {
     col += tint * rim * 0.75 * breathe * smoothstep(0.98, 0.6, abs(ang));
     col *= mix(0.55, 1.0, smoothstep(-0.05, 0.08, d));   // the planet's body is darker than space
     // a small glowing moon on the rim, with a flare that pulses with the bass
-    vec2 m = p - px2p(vec2(300.0, 400.0));
+    vec2 m = p - px2p(vec2(190.0, 330.0));
     col += c0.rgb * 0.7 * exp(-dot(m, m) / 0.06);
-    vec2 fl = p - px2p(vec2(410.0, 370.0));
+    vec2 fl = p - px2p(vec2(290.0, 300.0));
     float flare = exp(-dot(fl, fl) / 0.0012) * (1.2 + 1.5 * energy)
                 + exp(-fl.y * fl.y / 0.00002) * exp(-abs(fl.x) / 0.35) * (0.35 + 0.4 * energy)
                 + exp(-fl.x * fl.x / 0.00002) * exp(-abs(fl.y) / 0.2) * 0.2;

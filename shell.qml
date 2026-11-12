@@ -475,6 +475,9 @@ ShellRoot {
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
+            property real grain: 0.13
+            property real lines: 0
+            property real edge: 0
         }
         Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
 
@@ -621,9 +624,9 @@ ShellRoot {
                 // dark panels with thin gaps; the corners facing the video are cut round so the glow curls around it
                 Repeater {
                     model: [
-                        [2, 2, 442, 182, 0, 0, 160, 0], [448, 2, 1024, 182, 0, 0, 0, 0], [1476, 2, 442, 182, 0, 0, 0, 160],
-                        [2, 188, 442, 586, 0, 0, 0, 0], [1476, 188, 442, 586, 0, 0, 0, 0],
-                        [2, 778, 442, 300, 0, 160, 0, 0], [448, 778, 1024, 300, 0, 0, 0, 0], [1476, 778, 442, 300, 160, 0, 0, 0]
+                        [2, 2, 302, 92, 0, 0, 120, 0], [308, 2, 1304, 92, 0, 0, 0, 0], [1616, 2, 302, 92, 0, 0, 0, 120],
+                        [2, 98, 302, 744, 0, 0, 0, 0], [1616, 98, 302, 744, 0, 0, 0, 0],
+                        [2, 846, 302, 232, 0, 120, 0, 0], [308, 846, 1304, 232, 0, 0, 0, 0], [1616, 846, 302, 232, 120, 0, 0, 0]
                     ]
                     Rectangle {
                         required property var modelData
@@ -637,43 +640,53 @@ ShellRoot {
                     onPaint: {
                         const g = getContext("2d");
                         g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.16); g.lineWidth = 1;
-                        for (const l of [[0, 250, 300, 250], [1250, 0, 1600, 250], [1600, 250, 1920, 250], [0, 560, 290, 900], [290, 900, 0, 900], [1630, 950, 1920, 950], [1630, 950, 1630, 1080]]) {
+                        for (const l of [[0, 250, 200, 250], [1700, 0, 1920, 180], [0, 560, 200, 760], [200, 760, 0, 760], [1720, 950, 1920, 950], [1720, 950, 1720, 1080]]) {
                             g.beginPath(); g.moveTo(l[0], l[1]); g.lineTo(l[2], l[3]); g.stroke();
                         }
                         g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.45); g.lineWidth = 1.2;
-                        for (const c of [[96, 60], [150, 60], [230, 60], [1824, 60], [96, 1020], [230, 1020], [1824, 1020], [1824, 560], [1824, 700], [96, 640]]) {
+                        for (const c of [[60, 40], [96, 40], [132, 40], [1860, 40], [60, 1040], [132, 1040], [1860, 1040], [1860, 560], [1860, 700], [60, 640]]) {
                             g.beginPath(); g.arc(c[0], c[1], 4, 0, Math.PI * 2); g.stroke();
                         }
                         g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.6); g.lineWidth = 1.4;
-                        const x0 = 446, y0 = 186, x1 = 1474, y1 = 776, k = 22;
+                        const x0 = 306, y0 = 96, x1 = 1614, y1 = 844, k = 22;
                         for (const b of [[x0, y0 + k, x0, y0, x0 + k, y0], [x1 - k, y0, x1, y0, x1, y0 + k], [x0, y1 - k, x0, y1, x0 + k, y1], [x1 - k, y1, x1, y1, x1, y1 - k]]) {
                             g.beginPath(); g.moveTo(b[0], b[1]); g.lineTo(b[2], b[3]); g.lineTo(b[4], b[5]); g.stroke();
                         }
                     }
                 }
-                Rectangle { x: 460; y: 200; width: 1000; height: 562; color: "#050505" }
+                Rectangle { x: 320; y: 110; width: 1280; height: 720; color: "#050505" }
                 ScreencopyView {
                     id: pipView
-                    readonly property real fit: sourceSize.width > 0 ? Math.min(1000 / sourceSize.width, 562 / sourceSize.height) : 1
-                    x: 460 + (1000 - width) / 2; y: 200 + (562 - height) / 2
+                    readonly property real fit: sourceSize.width > 0 ? Math.min(1280 / sourceSize.width, 720 / sourceSize.height) : 1
+                    x: 320 + (1280 - width) / 2; y: 110 + (720 - height) / 2
                     width: sourceSize.width * fit; height: sourceSize.height * fit
                     captureSource: root.shown && root.ytMode && root.captureReady ? root.pipWindow.wayland : null
                     live: true
                     onStopped: { root.captureReady = false; captureDelay.restart(); }    // the capture breaks if the window resizes: start it again
                 }
+                ShaderEffect {      // the video's own filter: grain, fine scanlines and a soft edge, so it matches the scene
+                    x: pipView.x; y: pipView.y; width: pipView.width; height: pipView.height
+                    visible: pipView.hasContent
+                    fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
+                    property real clock: root.seconds
+                    property vector2d size: Qt.vector2d(width, height)
+                    property real grain: 0.09
+                    property real lines: 0.12
+                    property real edge: 0.35
+                }
                 // labels
-                Mono { x: 96; y: 92; text: "Now playing"; opacity: 0.55 }
-                Mono { x: 96; y: 114; text: "YouTube / " + root.ytStyles[root.ytStyle]; opacity: 0.85 }
-                Mono { x: 1640; y: 92; text: "Background"; font.pixelSize: 11; opacity: 0.4 }
-                Mono { x: 1640; y: 112; text: "0" + (root.ytStyle + 1) + " / 04"; font.pixelSize: 11; opacity: 0.75 }
-                Mono { x: 1832; y: 400; text: "12.3641° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft }
-                Mono { x: 1660; y: 716; text: "13.8277° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45 }
-                Mono { x: 96; y: 1036; text: "Press B / next background"; font.pixelSize: 10; opacity: 0.4 }
-                Mono { x: 460; y: 800; width: 1000; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
-                Mono { x: 460; y: 826; width: 1000; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
+                Mono { x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
+                Mono { x: 60; y: 72; text: "YouTube / " + root.ytStyles[root.ytStyle]; opacity: 0.85 }
+                Mono { x: 1700; y: 54; text: "Background"; font.pixelSize: 11; opacity: 0.4 }
+                Mono { x: 1700; y: 72; text: "0" + (root.ytStyle + 1) + " / 04"; font.pixelSize: 11; opacity: 0.75 }
+                Mono { x: 1890; y: 360; text: "12.3641° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft }
+                Mono { x: 1660; y: 780; text: "13.8277° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45 }
+                Mono { x: 160; y: 1034; text: "Press B / next background"; font.pixelSize: 10; opacity: 0.4 }
+                Mono { x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
+                Mono { x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
                 // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
                 Item {
-                    x: 460; y: 980; width: 1000; height: 24
+                    x: 360; y: 975; width: 1240; height: 24
                     MouseArea { x: -40; width: 30; height: 24; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle()
                         Mono { anchors.centerIn: parent; text: root.ytPlaying ? "||" : "▶"; font.letterSpacing: 0; font.pixelSize: 14 } }
                     Mono { id: tStart; anchors.verticalCenter: parent.verticalCenter; text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) : "--:--"; font.letterSpacing: 6; opacity: 0.75 }
@@ -702,7 +715,7 @@ ShellRoot {
                 }
                 // sparkles that twinkle
                 Repeater {
-                    model: [[1478, 176, 28, 0.95, 3100], [300, 760, 20, 0.8, 4300], [1700, 620, 16, 0.6, 3700], [160, 470, 14, 0.6, 5200]]
+                    model: [[1618, 92, 28, 0.95, 3100], [200, 900, 20, 0.8, 4300], [1760, 620, 16, 0.6, 3700], [150, 420, 14, 0.6, 5200]]
                     Text {
                         required property var modelData
                         x: modelData[0] - modelData[2] / 2; y: modelData[1] - modelData[2] * 0.6
