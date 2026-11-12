@@ -166,7 +166,15 @@ ShellRoot {
     }
     readonly property bool ytHasLength: ytPlayer !== null && ytPlayer.lengthSupported && ytPlayer.length > 1    // Firefox often reports no length for YouTube
     readonly property bool ytPlaying: ytMode && ytPlayer !== null && ytPlayer.isPlaying
-    readonly property var ytStyles: ["Club lights", "Cozy jazz", "Rainy lo-fi", "Aurora"]
+    readonly property var ytStyles: ["Mars", "Dusk", "Deep sea", "Ember"]
+    readonly property var ytPalettes: [            // warm, highlight, middle, cool
+        ["#ff5a1f", "#ffb15a", "#2f8a4a", "#1d5f86"],
+        ["#ff3d7f", "#ffb347", "#7a3cff", "#2a3a9a"],
+        ["#1fb5c9", "#7ff0d8", "#2a5fb8", "#3a2a7a"],
+        ["#ff7a1a", "#ffd27a", "#b3361f", "#5a2a12"]
+    ]
+    readonly property string monoFont: "JetBrainsMono Nerd Font"
+    readonly property color ink: "#ead8b8"
     property int ytStyle: 0
     // While the player shows it, the Picture-in-Picture window is made full size (sharp video) and tucked away on a
     // hidden workspace; when the player closes it goes back to where it was, at its old size.
@@ -423,7 +431,7 @@ ShellRoot {
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
-            property real style: root.ytMode ? 5 + root.ytStyle : root.bgStyle
+            property real style: root.ytMode ? 5 : root.bgStyle
             property real clock: root.seconds
             property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
@@ -441,10 +449,10 @@ ShellRoot {
                     else root.pointer = root.lag = root.slowPointer = Qt.vector2d(99, 99);
                 }
             }
-            property color c0: root.c0
-            property color c1: root.c1
-            property color c2: root.c2
-            property color c3: root.c3
+            property color c0: root.ytMode ? root.ytPalettes[root.ytStyle][0] : root.c0
+            property color c1: root.ytMode ? root.ytPalettes[root.ytStyle][1] : root.c1
+            property color c2: root.ytMode ? root.ytPalettes[root.ytStyle][2] : root.c2
+            property color c3: root.ytMode ? root.ytPalettes[root.ytStyle][3] : root.c3
             layer.enabled: true                     // drawn small and stretched: the look is soft, and it keeps the GPU cost low
             layer.textureSize: Qt.size(960, 540)
             layer.smooth: true
@@ -465,7 +473,6 @@ ShellRoot {
             anchors.fill: parent
             visible: root.ytMode
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
-            property real look: root.ytStyle
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
         }
@@ -602,47 +609,111 @@ ShellRoot {
                 text: root.styleNote; font.pixelSize: 18; opacity: root.styleNote ? 0.85 : 0
                 Behavior on opacity { NumberAnimation { duration: 250 } } }
 
-            // ---- YouTube mode: the Picture-in-Picture video, live, with its title and controls ----
+            // ---- YouTube mode: the Picture-in-Picture video in a frame of dark panels, hairlines and mono labels ----
             Item {
                 visible: root.ytMode
                 anchors.fill: parent
-                Rectangle {     // shadow and frame behind the video
-                    x: 320; y: 130; width: 1280; height: 720; radius: 18
-                    color: "#060608"; border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.08)
+                component Mono: Text {
+                    font.family: root.monoFont; font.weight: Font.Light; font.pixelSize: 12; font.letterSpacing: 7
+                    font.capitalization: Font.AllUppercase
+                    color: root.ink
                 }
-                ClippingRectangle {
-                    x: 320; y: 130; width: 1280; height: 720; radius: 18; color: "transparent"
-                    ScreencopyView {
-                        id: pipView
-                        anchors.centerIn: parent
-                        onStopped: { root.captureReady = false; captureDelay.restart(); }    // the capture breaks if the window resizes: start it again
-                        readonly property real fit: sourceSize.width > 0 ? Math.min(1280 / sourceSize.width, 720 / sourceSize.height) : 1
-                        width: sourceSize.width * fit; height: sourceSize.height * fit
-                        captureSource: root.shown && root.ytMode && root.captureReady ? root.pipWindow.wayland : null
-                        live: true
+                // dark panels with thin gaps; the corners facing the video are cut round so the glow curls around it
+                Repeater {
+                    model: [
+                        [2, 2, 442, 182, 0, 0, 160, 0], [448, 2, 1024, 182, 0, 0, 0, 0], [1476, 2, 442, 182, 0, 0, 0, 160],
+                        [2, 188, 442, 586, 0, 0, 0, 0], [1476, 188, 442, 586, 0, 0, 0, 0],
+                        [2, 778, 442, 300, 0, 160, 0, 0], [448, 778, 1024, 300, 0, 0, 0, 0], [1476, 778, 442, 300, 160, 0, 0, 0]
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        x: modelData[0]; y: modelData[1]; width: modelData[2]; height: modelData[3]
+                        topLeftRadius: modelData[4]; topRightRadius: modelData[5]; bottomRightRadius: modelData[6]; bottomLeftRadius: modelData[7]
+                        color: Qt.rgba(0.043, 0.039, 0.047, 0.55)
                     }
                 }
-                Label { x: 320; y: 880; width: 1280; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 32; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                Label { x: 320; y: 926; width: 1280; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 18; opacity: 0.7; elide: Text.ElideRight }
-                Row {
-                    x: 320; y: 990; width: 1280; spacing: 18
-                    IconButton { anchors.verticalCenter: parent.verticalCenter; icon: root.ytPlaying ? "pause" : "play"; onClicked: root.ytToggle() }
-                    Label { anchors.verticalCenter: parent.verticalCenter; visible: root.ytHasLength; text: root.ytPlayer ? root.clock(root.ytPlayer.position * 1000) : ""; font.pixelSize: 15; opacity: 0.72; font.features: ({ "tnum": 1 }) }
-                    Rail {
-                        visible: root.ytHasLength
-                        anchors.verticalCenter: parent.verticalCenter; width: 940
-                        fraction: root.ytPlayer && root.ytPlayer.length > 0 ? root.ytPlayer.position / root.ytPlayer.length : 0
-                        onPicked: f => { if (root.ytPlayer && root.ytPlayer.canSeek) root.ytPlayer.position = f * root.ytPlayer.length; }
-                    }
-                    Label { anchors.verticalCenter: parent.verticalCenter; visible: root.ytHasLength; text: root.ytPlayer ? root.clock(root.ytPlayer.length * 1000) : ""; font.pixelSize: 15; opacity: 0.72; font.features: ({ "tnum": 1 }) }
-                    Image { anchors.verticalCenter: parent.verticalCenter; width: 24; height: 24; sourceSize: Qt.size(48, 48); source: "file://" + root.dir + "/assets/volume.svg" }
-                    Rail {
-                        anchors.verticalCenter: parent.verticalCenter; width: 60
-                        fraction: root.ytPlayer ? root.ytPlayer.volume : 0
-                        onPicked: f => { if (root.ytPlayer) root.ytPlayer.volume = f; }
+                Canvas {        // hairlines, small circle markers and the video's corner brackets
+                    anchors.fill: parent
+                    onPaint: {
+                        const g = getContext("2d");
+                        g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.16); g.lineWidth = 1;
+                        for (const l of [[0, 250, 300, 250], [1250, 0, 1600, 250], [1600, 250, 1920, 250], [0, 560, 290, 900], [290, 900, 0, 900], [1630, 950, 1920, 950], [1630, 950, 1630, 1080]]) {
+                            g.beginPath(); g.moveTo(l[0], l[1]); g.lineTo(l[2], l[3]); g.stroke();
+                        }
+                        g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.45); g.lineWidth = 1.2;
+                        for (const c of [[96, 60], [150, 60], [230, 60], [1824, 60], [96, 1020], [230, 1020], [1824, 1020], [1824, 560], [1824, 700], [96, 640]]) {
+                            g.beginPath(); g.arc(c[0], c[1], 4, 0, Math.PI * 2); g.stroke();
+                        }
+                        g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.6); g.lineWidth = 1.4;
+                        const x0 = 446, y0 = 186, x1 = 1474, y1 = 776, k = 22;
+                        for (const b of [[x0, y0 + k, x0, y0, x0 + k, y0], [x1 - k, y0, x1, y0, x1, y0 + k], [x0, y1 - k, x0, y1, x0 + k, y1], [x1 - k, y1, x1, y1, x1, y1 - k]]) {
+                            g.beginPath(); g.moveTo(b[0], b[1]); g.lineTo(b[2], b[3]); g.lineTo(b[4], b[5]); g.stroke();
+                        }
                     }
                 }
-                Label { x: 60; y: 44; text: "YouTube mode"; font.pixelSize: 16; font.weight: Font.DemiBold; opacity: 0.55 }
+                Rectangle { x: 460; y: 200; width: 1000; height: 562; color: "#050505" }
+                ScreencopyView {
+                    id: pipView
+                    readonly property real fit: sourceSize.width > 0 ? Math.min(1000 / sourceSize.width, 562 / sourceSize.height) : 1
+                    x: 460 + (1000 - width) / 2; y: 200 + (562 - height) / 2
+                    width: sourceSize.width * fit; height: sourceSize.height * fit
+                    captureSource: root.shown && root.ytMode && root.captureReady ? root.pipWindow.wayland : null
+                    live: true
+                    onStopped: { root.captureReady = false; captureDelay.restart(); }    // the capture breaks if the window resizes: start it again
+                }
+                // labels
+                Mono { x: 96; y: 92; text: "Now playing"; opacity: 0.55 }
+                Mono { x: 96; y: 114; text: "YouTube / " + root.ytStyles[root.ytStyle]; opacity: 0.85 }
+                Mono { x: 1640; y: 92; text: "Background"; font.pixelSize: 11; opacity: 0.4 }
+                Mono { x: 1640; y: 112; text: "0" + (root.ytStyle + 1) + " / 04"; font.pixelSize: 11; opacity: 0.75 }
+                Mono { x: 1832; y: 400; text: "12.3641° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft }
+                Mono { x: 1660; y: 716; text: "13.8277° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45 }
+                Mono { x: 96; y: 1036; text: "Press B / next background"; font.pixelSize: 10; opacity: 0.4 }
+                Mono { x: 460; y: 800; width: 1000; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
+                Mono { x: 460; y: 826; width: 1000; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
+                // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
+                Item {
+                    x: 460; y: 980; width: 1000; height: 24
+                    MouseArea { x: -40; width: 30; height: 24; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle()
+                        Mono { anchors.centerIn: parent; text: root.ytPlaying ? "||" : "▶"; font.letterSpacing: 0; font.pixelSize: 14 } }
+                    Mono { id: tStart; anchors.verticalCenter: parent.verticalCenter; text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) : "--:--"; font.letterSpacing: 6; opacity: 0.75 }
+                    Mono { id: tEnd; anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: root.ytHasLength ? root.clock(root.ytPlayer.length * 1000) : "--:--"; font.letterSpacing: 6; opacity: 0.75 }
+                    Item {
+                        id: barcode
+                        anchors { left: tStart.right; leftMargin: 18; right: tEnd.left; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                        height: 22
+                        readonly property int count: Math.max(0, Math.floor(width / 6.6))
+                        readonly property real played: root.ytHasLength ? root.ytPlayer.position / root.ytPlayer.length : -1
+                        property real scan: 0
+                        NumberAnimation on scan { from: 0; to: 1; duration: 6000; loops: Animation.Infinite; running: root.shown && root.ytMode && !root.ytHasLength }
+                        Repeater {
+                            model: barcode.count
+                            Rectangle {
+                                required property int index
+                                x: index * 6.6; width: index * 7 % 5 === 0 ? 2.4 : 1.2; height: 22
+                                color: root.ink
+                                opacity: barcode.played >= 0 ? (index < barcode.played * barcode.count ? 0.9 : 0.22)
+                                                              : 0.22 + 0.5 * Math.exp(-Math.pow((index / barcode.count - barcode.scan) * 12, 2))
+                            }
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: m => { if (root.ytHasLength && root.ytPlayer.canSeek) root.ytPlayer.position = m.x / width * root.ytPlayer.length; } }
+                    }
+                }
+                // sparkles that twinkle
+                Repeater {
+                    model: [[1478, 176, 28, 0.95, 3100], [300, 760, 20, 0.8, 4300], [1700, 620, 16, 0.6, 3700], [160, 470, 14, 0.6, 5200]]
+                    Text {
+                        required property var modelData
+                        x: modelData[0] - modelData[2] / 2; y: modelData[1] - modelData[2] * 0.6
+                        text: "✦"; font.pixelSize: modelData[2]; color: "#f4e6ff"
+                        SequentialAnimation on opacity {
+                            running: root.shown && root.ytMode; loops: Animation.Infinite
+                            NumberAnimation { from: modelData[3]; to: modelData[3] * 0.25; duration: modelData[4]; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: modelData[3] * 0.25; to: modelData[3]; duration: modelData[4]; easing.type: Easing.InOutSine }
+                        }
+                    }
+                }
             }
 
             // flat media controls
