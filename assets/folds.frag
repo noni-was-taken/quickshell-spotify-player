@@ -268,7 +268,7 @@ float threads(vec2 p, float cx, float w, float seed) {
     float lane = (p.x - cx) * 130.0;
     float id = floor(lane);
     float on = step(0.4, h1(id + seed));
-    float thin = exp(-sq((fract(lane) - 0.5) / 0.1));
+    float thin = exp(-sq((fract(lane) - 0.5) / 0.16));
     float top = -0.5 + 0.05 * sin(clock * 0.13 + seed) + 0.03 * h1(id + seed + 2.0);
     float len = 0.75 + 0.35 * sin(clock * 0.06 + h1(id + seed) * 6.0);      // each thread slowly lengthens and shortens
     float y = p.y - top;
@@ -284,34 +284,26 @@ float threadGroups(vec2 p) {
 vec3 lightRain(vec2 p) {
     vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
     float t = clock * 0.018;
-    vec3 col = mix(vec3(0.035, 0.036, 0.045), c3.rgb * 0.6, smoothstep(-0.3, 0.7, p.y));      // dark sky above, warmer haze below
+    vec3 col = mix(c3.rgb * 0.35, c3.rgb, smoothstep(-1.0, 0.6, p.y));     // deep blue sky above, paler blue below
     col = mix(col, vec3(0.05, 0.05, 0.06), smoothstep(0.55, 1.05, p.y));
     vec2 g = (p - vec2(0.0, -0.45) + look * 0.03) * vec2(0.55, 1.3);
-    col += c0.rgb * 0.32 * exp(-dot(g, g) / 0.55);                         // warm light inside the cloud
+    col += c0.rgb * 0.6 * exp(-dot(g, g) / 0.7);                           // the sun glowing gold through the cloud
     // threads of light, with a slight rainbow fringe (each colour channel offset a hair)
     vec2 tp = p + look * vec2(0.07, 0.04);
     vec3 s = vec3(threadGroups(tp + vec2(0.0016, 0.0)), threadGroups(tp), threadGroups(tp - vec2(0.0016, 0.0)));
-    col += c1.rgb * s * 1.5 * (1.0 + 0.35 * energy);
-    col += c0.rgb * 0.03 * (s.r + s.g + s.b);                              // a little haze around them
-    // the cloud bank: crisp, detailed billows along the top, with heavier puffs over the threads at the sides
+    col += c1.rgb * s * 2.0 * (1.0 + 0.35 * energy);
+    col += c0.rgb * 0.06 * (s.r + s.g + s.b);                              // soft haze around them
+    // the cloud bank: billowing along the top, with heavier puffs over the threads at the sides
     vec2 cp = p + look * 0.05;
-    vec2 w = cp + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.6;
-    float n = fbm(w * 1.7) * 0.7 + fbm(w * 5.0 + 3.0) * 0.22 + fbm(w * 13.0 + 7.0) * 0.08;   // fine detail on the edges
-    float shape = max(exp(-sq((cp.y + 1.06) / 0.17)),
-                      exp(-(sq((abs(cp.x) - 1.5) / 0.3) + sq((cp.y + 0.5) / 0.3))));
-    float dens = n * 0.75 + shape * 0.55;
-    float cloud = smoothstep(0.545, 0.565, dens);                           // a sharp silhouette
-    // light from below and behind: brighter where the cloud thins toward its lower edge, shadowed inside
-    vec2 up = vec2(0.0, -0.025);
-    float dUp = fbm((w + up) * 1.7) * 0.7 + fbm((w + up) * 5.0 + 3.0) * 0.22 + shape * 0.55;
-    float rim = smoothstep(0.0, 0.08, dens - (dUp * 0.75 + shape * 0.0)) ;
-    float inner = smoothstep(0.42, 0.68, n);        // shade by the billow texture, so the cloud has volume
-    vec3 cloudCol = mix(mix(c1.rgb, vec3(1.0), 0.45) * 0.88, c2.rgb * 1.15, inner);     // pale lit cream, blue-grey shadow
-    cloudCol += mix(c1.rgb, vec3(1.0), 0.3) * (rim * 0.35 + smoothstep(0.62, 0.55, dens) * 0.3) * (1.0 - inner * 0.6);   // glowing lower edge
-    col = mix(col, cloudCol, cloud);
+    float n = fbm(cp * 1.7 + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.9);
+    float shape = max(exp(-sq((cp.y + 0.82) / 0.26)),
+                      exp(-(sq((abs(cp.x) - 1.42) / 0.38) + sq((cp.y + 0.55) / 0.22))));
+    float cloud = smoothstep(0.42, 0.72, n * 0.75 + shape * 0.55);
+    vec3 cloudCol = mix(mix(c0.rgb, c1.rgb, 0.4) * 0.9 + 0.08, c2.rgb, smoothstep(0.5, 0.85, n));
+    col = mix(col, cloudCol, cloud * 0.92);
     // drifting mist low down
     float mist = fbm(p * 1.1 + vec2(t * 2.5, t)) * smoothstep(-0.1, 0.9, p.y);
-    col = mix(col, c3.rgb * 1.1 + c0.rgb * 0.08, mist * 0.12);
+    col = mix(col, c3.rgb * 1.1 + c0.rgb * 0.08, mist * 0.3);
     return col;
 }
 

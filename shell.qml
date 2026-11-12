@@ -172,10 +172,10 @@ ShellRoot {
         ["#45475e", "#ffcaa0", "#7a8cff", "#0e0f19"],
         ["#3a5058", "#fff0c8", "#4fb0ff", "#0a1416"]
     ]
-    readonly property var rainPalettes: [          // glow, light, cloud shadow, mist
-        ["#d98a4a", "#ffd59a", "#5a6270", "#3a3530"],
-        ["#c76a5a", "#ffc2a8", "#5a5a72", "#3a2f35"],
-        ["#c99a4a", "#fff0b0", "#56606a", "#36352e"]
+    readonly property var rainPalettes: [          // sun glow (gold), light (gold), cloud shadow (blue), sky (blue)
+        ["#e0a040", "#ffd37a", "#3c5a86", "#2a4a78"],
+        ["#e8b450", "#ffe2a0", "#36507a", "#24406c"],
+        ["#d89a3a", "#ffcc6a", "#425f8c", "#2e5080"]
     ]
     readonly property var ytPalettes: [            // warm, highlight, middle, cool
         ["#ff5a1f", "#ffb15a", "#2f8a4a", "#1d5f86"],
