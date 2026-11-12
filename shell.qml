@@ -789,10 +789,18 @@ ShellRoot {
                     visible: root.ytStyle === 2
                     anchors.fill: parent
                     component Side: Text { font.family: root.fontName; font.pixelSize: 15; color: "#f2f4f8"; rotation: -90; transformOrigin: Item.TopLeft }
-                    Side { x: 1660; y: 820; text: Qt.formatDate(clockNow.date, "dd MMM") + " - " + Qt.formatDate(clockNow.date, "dddd") }
-                    Side { x: 1682; y: 820; width: 700; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle.toUpperCase() : "" }
-                    Side { x: 1660; y: 360; text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + " / " + root.clock(root.ytPlayer.length * 1000) : "Now playing"; opacity: 0.8 }
-                    Side { x: 1682; y: 360; width: 250; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; opacity: 0.8 }
+                    // title and details under the video, in two small columns like the flyer
+                    component Flat: Text { font.family: root.fontName; font.pixelSize: 16; color: "#f2f4f8" }
+                    Column {
+                        x: 320; y: 870; width: 900; spacing: 4
+                        Flat { text: Qt.formatDate(clockNow.date, "dd MMM") + " - " + Qt.formatDate(clockNow.date, "dddd"); opacity: 0.75 }
+                        Flat { width: parent.width; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle.toUpperCase() : ""; font.pixelSize: 22 }
+                    }
+                    Column {
+                        x: 1260; y: 870; width: 340; spacing: 4
+                        Flat { text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + " / " + root.clock(root.ytPlayer.length * 1000) : "Now playing"; opacity: 0.75 }
+                        Flat { width: parent.width; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 22 }
+                    }
                     Side { x: 1738; y: 1000; text: root.ytPlaying ? "PAUSE" : "PLAY"; font.letterSpacing: 4; font.pixelSize: 12
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle() } }
                     Side { x: 1738; y: 220; text: "PRISM  /  B"; font.letterSpacing: 4; font.pixelSize: 11; opacity: 0.55 }
