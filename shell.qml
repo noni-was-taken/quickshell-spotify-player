@@ -644,18 +644,46 @@ ShellRoot {
                         color: Qt.rgba(0.043, 0.039, 0.047, 0.55)
                     }
                 }
-                Canvas {        // hairlines, small circle markers and the video's corner brackets
+                // Parallax: each layer shifts with the mouse (slowly) and a gentle drift; nearer layers move more
+                readonly property vector2d look: root.slowPointer.x > 90 ? Qt.vector2d(0, 0) : root.slowPointer
+                readonly property real driftX: Math.sin(root.seconds * 0.07) * 0.5 + Math.sin(root.seconds * 0.031) * 0.5
+                readonly property real driftY: Math.cos(root.seconds * 0.053) * 0.6 + Math.sin(root.seconds * 0.019) * 0.4
+                component Layer: Item {
+                    required property real depth
+                    width: 1920; height: 1080
+                    x: -(parent.look.x * 26 + parent.driftX * 14) * depth
+                    y: -(parent.look.y * 18 + parent.driftY * 10) * depth
+                }
+                Layer {         // far: long hairlines
+                    depth: 0.5
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            const g = getContext("2d");
+                            g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.16); g.lineWidth = 1;
+                            for (const l of [[-40, 250, 200, 250], [1700, -40, 1960, 200], [-40, 520, 200, 760], [200, 760, -40, 760], [1720, 950, 1960, 950], [1720, 950, 1720, 1120]]) {
+                                g.beginPath(); g.moveTo(l[0], l[1]); g.lineTo(l[2], l[3]); g.stroke();
+                            }
+                        }
+                    }
+                }
+                Layer {         // near: circle markers
+                    depth: 1.2
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            const g = getContext("2d");
+                            g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.45); g.lineWidth = 1.2;
+                            for (const c of [[60, 40], [96, 40], [132, 40], [1860, 40], [60, 1040], [132, 1040], [1860, 1040], [1860, 560], [1860, 700], [60, 640]]) {
+                                g.beginPath(); g.arc(c[0], c[1], 4, 0, Math.PI * 2); g.stroke();
+                            }
+                        }
+                    }
+                }
+                Canvas {        // the video's corner brackets stay put: they frame the video
                     anchors.fill: parent
                     onPaint: {
                         const g = getContext("2d");
-                        g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.16); g.lineWidth = 1;
-                        for (const l of [[0, 250, 200, 250], [1700, 0, 1920, 180], [0, 560, 200, 760], [200, 760, 0, 760], [1720, 950, 1920, 950], [1720, 950, 1720, 1080]]) {
-                            g.beginPath(); g.moveTo(l[0], l[1]); g.lineTo(l[2], l[3]); g.stroke();
-                        }
-                        g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.45); g.lineWidth = 1.2;
-                        for (const c of [[60, 40], [96, 40], [132, 40], [1860, 40], [60, 1040], [132, 1040], [1860, 1040], [1860, 560], [1860, 700], [60, 640]]) {
-                            g.beginPath(); g.arc(c[0], c[1], 4, 0, Math.PI * 2); g.stroke();
-                        }
                         g.strokeStyle = Qt.rgba(0.92, 0.85, 0.72, 0.6); g.lineWidth = 1.4;
                         const x0 = 306, y0 = 96, x1 = 1614, y1 = 844, k = 22;
                         for (const b of [[x0, y0 + k, x0, y0, x0 + k, y0], [x1 - k, y0, x1, y0, x1, y0 + k], [x0, y1 - k, x0, y1, x0 + k, y1], [x1 - k, y1, x1, y1, x1, y1 - k]]) {
@@ -688,8 +716,15 @@ ShellRoot {
                 Mono { x: 60; y: 72; text: "YouTube"; opacity: 0.85 }
                 Mono { x: 1700; y: 54; text: "Theme"; font.pixelSize: 11; opacity: 0.4 }
                 Mono { x: 1700; y: 72; text: "Cosmic"; font.pixelSize: 11; opacity: 0.75 }
-                Mono { x: 1890; y: 360; text: "12.3641° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft }
-                Mono { x: 1660; y: 780; text: "13.8277° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45 }
+                Layer {         // middle: coordinates that keep reading out new values, like an instrument
+                    depth: 0.8
+                    readonly property real lat: 12.3641 + 0.35 * Math.sin(root.seconds * 0.043) + 0.04 * Math.sin(root.seconds * 0.71)
+                    readonly property real lon: 13.8277 + 0.5 * Math.cos(root.seconds * 0.037) + 0.05 * Math.sin(root.seconds * 0.63)
+                    Mono { x: 1890; y: 360; text: parent.lat.toFixed(4) + "° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft; font.features: ({ "tnum": 1 }) }
+                    Mono { x: 1660; y: 780; text: parent.lon.toFixed(4) + "° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; font.features: ({ "tnum": 1 }) }
+                    Mono { x: 60; y: 700; text: "Signal " + (60 + 35 * root.energy + 4 * Math.sin(root.seconds * 1.3)).toFixed(1); font.pixelSize: 10; font.letterSpacing: 6; opacity: 0.35; font.features: ({ "tnum": 1 }) }
+                    Mono { x: 60; y: 720; text: "Orbit " + ((root.seconds * 0.9) % 360).toFixed(1) + "°"; font.pixelSize: 10; font.letterSpacing: 6; opacity: 0.35; font.features: ({ "tnum": 1 }) }
+                }
                                 Mono { x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
                 Mono { x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
                 // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
