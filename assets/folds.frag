@@ -206,12 +206,13 @@ vec2 px2p(vec2 px) { return (px / vec2(1920.0, 1080.0) - 0.5) * vec2(aspect, 1.0
 vec3 cosmic(vec2 p) {
     vec3 col = vec3(0.045, 0.042, 0.04);
     // the planet rim: a huge circle whose edge sweeps over the video; its colours slowly travel round it
-    vec2 c = px2p(vec2(960.0, 1010.0));
-    float R = 950.0 / 540.0;
+    // the whole planet drifts slowly and breathes, so the rim wanders around the video
+    vec2 c = px2p(vec2(960.0 + 90.0 * sin(clock * 0.031), 1010.0 + 45.0 * cos(clock * 0.023)));
+    float R = (950.0 + 35.0 * sin(clock * 0.017)) / 540.0;
     vec2 q = p - c;
     float r = length(q);
     float ang = atan(q.x, -q.y) / 3.14159;            // -1 left .. 0 top .. 1 right
-    float t = ang + 0.06 * sin(clock * 0.05);
+    float t = ang + 0.12 * sin(clock * 0.05);
     vec3 tint = mix(c0.rgb, c1.rgb, smoothstep(-0.75, -0.45, t));
     tint = mix(tint, c2.rgb, smoothstep(-0.35, 0.05, t));
     tint = mix(tint, c3.rgb, smoothstep(0.15, 0.55, t));
@@ -220,16 +221,18 @@ vec3 cosmic(vec2 p) {
     float breathe = 0.85 + 0.15 * sin(clock * 0.3) + 0.25 * energy;
     col += tint * rim * 0.75 * breathe * smoothstep(0.98, 0.6, abs(ang));
     col *= mix(0.55, 1.0, smoothstep(-0.05, 0.08, d));   // the planet's body is darker than space
-    // a small glowing moon on the rim, with a flare that pulses with the bass
-    vec2 m = p - px2p(vec2(190.0, 330.0));
+    // a small glowing moon that travels slowly along the rim, with a flare that pulses with the bass
+    float ma = -0.62 + 0.14 * sin(clock * 0.021);
+    vec2 moon = c + (R + 0.04) * vec2(sin(ma * 3.14159), -cos(ma * 3.14159));
+    vec2 m = p - moon;
     col += c0.rgb * 0.7 * exp(-dot(m, m) / 0.06);
-    vec2 fl = p - px2p(vec2(290.0, 300.0));
+    vec2 fl = p - (moon + vec2(0.17, -0.05));
     float flare = exp(-dot(fl, fl) / 0.0012) * (1.2 + 1.5 * energy)
                 + exp(-fl.y * fl.y / 0.00002) * exp(-abs(fl.x) / 0.35) * (0.35 + 0.4 * energy)
                 + exp(-fl.x * fl.x / 0.00002) * exp(-abs(fl.y) / 0.2) * 0.2;
     col += mix(c1.rgb, vec3(1.0, 0.95, 0.85), 0.6) * flare;
     // a thin bright horizon in the lower right, drifting slowly
-    vec2 hc = px2p(vec2(1880.0 + 40.0 * sin(clock * 0.04), 2150.0));
+    vec2 hc = px2p(vec2(1880.0 + 160.0 * sin(clock * 0.027), 2150.0 + 50.0 * cos(clock * 0.019)));
     float hd = length(p - hc) - 2.35;
     float hx = smoothstep(px2p(vec2(900.0, 0.0)).x, px2p(vec2(1700.0, 0.0)).x, p.x);
     col += mix(c2.rgb, vec3(1.0, 0.9, 0.93), 0.6) * (exp(-hd * hd / 0.00012) * 0.9 + exp(-max(hd, 0.0) / 0.12) * 0.12 * step(0.0, hd)) * hx;

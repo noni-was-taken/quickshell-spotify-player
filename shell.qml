@@ -166,13 +166,20 @@ ShellRoot {
     }
     readonly property bool ytHasLength: ytPlayer !== null && ytPlayer.lengthSupported && ytPlayer.length > 1    // Firefox often reports no length for YouTube
     readonly property bool ytPlaying: ytMode && ytPlayer !== null && ytPlayer.isPlaying
-    readonly property var ytStyles: ["Mars", "Dusk", "Deep sea", "Ember"]
+    readonly property var ytStyles: ["Cosmic"]      // one design for now; more themes will get their own designs
     readonly property var ytPalettes: [            // warm, highlight, middle, cool
         ["#ff5a1f", "#ffb15a", "#2f8a4a", "#1d5f86"],
         ["#ff3d7f", "#ffb347", "#7a3cff", "#2a3a9a"],
         ["#1fb5c9", "#7ff0d8", "#2a5fb8", "#3a2a7a"],
         ["#ff7a1a", "#ffd27a", "#b3361f", "#5a2a12"]
     ]
+    // Cosmic: the colours slowly travel through these palettes, about 40 seconds each, blending in between
+    function mixc(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1); }
+    readonly property real cosmicPhase: (seconds / 40) % ytPalettes.length
+    function cosmicColor(k) {
+        const i = Math.floor(cosmicPhase), t = cosmicPhase - i, e = t * t * (3 - 2 * t);
+        return mixc(ytPalettes[i][k], ytPalettes[(i + 1) % ytPalettes.length][k], e);
+    }
     readonly property string monoFont: "JetBrainsMono Nerd Font"
     readonly property color ink: "#ead8b8"
     property int ytStyle: 0
@@ -252,7 +259,9 @@ ShellRoot {
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
     // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
-    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach"]
+    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach", "Cosmic"]
+    // Cosmic on the Spotify player follows the genre: its rim colours come from the genre palette
+    readonly property var cosmicSpotify: [Qt.lighter(c1, 1.6), Qt.lighter(c2, 1.4), Qt.lighter(c3, 1.6), Qt.lighter(c1, 1.1)]
     property int bgStyle: 0
     property real seconds: 0
     property string styleNote: ""
@@ -449,15 +458,15 @@ ShellRoot {
                     else root.pointer = root.lag = root.slowPointer = Qt.vector2d(99, 99);
                 }
             }
-            property color c0: root.ytMode ? root.ytPalettes[root.ytStyle][0] : root.c0
-            property color c1: root.ytMode ? root.ytPalettes[root.ytStyle][1] : root.c1
-            property color c2: root.ytMode ? root.ytPalettes[root.ytStyle][2] : root.c2
-            property color c3: root.ytMode ? root.ytPalettes[root.ytStyle][3] : root.c3
+            property color c0: root.ytMode ? root.cosmicColor(0) : root.bgStyle === 5 ? root.cosmicSpotify[0] : root.c0
+            property color c1: root.ytMode ? root.cosmicColor(1) : root.bgStyle === 5 ? root.cosmicSpotify[1] : root.c1
+            property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.c2
+            property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.c3
             layer.enabled: true                     // drawn small and stretched: the look is soft, and it keeps the GPU cost low
             layer.textureSize: Qt.size(960, 540)
             layer.smooth: true
         }
-        Image { visible: !root.ytMode; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image { visible: !root.ytMode && root.bgStyle !== 5; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
         Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
             id: grain
             visible: !root.ytMode
@@ -471,7 +480,7 @@ ShellRoot {
         }
         ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
             anchors.fill: parent
-            visible: root.ytMode
+            visible: root.ytMode || root.bgStyle === 5
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
@@ -676,13 +685,12 @@ ShellRoot {
                 }
                 // labels
                 Mono { x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
-                Mono { x: 60; y: 72; text: "YouTube / " + root.ytStyles[root.ytStyle]; opacity: 0.85 }
-                Mono { x: 1700; y: 54; text: "Background"; font.pixelSize: 11; opacity: 0.4 }
-                Mono { x: 1700; y: 72; text: "0" + (root.ytStyle + 1) + " / 04"; font.pixelSize: 11; opacity: 0.75 }
+                Mono { x: 60; y: 72; text: "YouTube"; opacity: 0.85 }
+                Mono { x: 1700; y: 54; text: "Theme"; font.pixelSize: 11; opacity: 0.4 }
+                Mono { x: 1700; y: 72; text: "Cosmic"; font.pixelSize: 11; opacity: 0.75 }
                 Mono { x: 1890; y: 360; text: "12.3641° N"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45; rotation: 90; transformOrigin: Item.TopLeft }
                 Mono { x: 1660; y: 780; text: "13.8277° E"; font.pixelSize: 11; font.letterSpacing: 6; opacity: 0.45 }
-                Mono { x: 160; y: 1034; text: "Press B / next background"; font.pixelSize: 10; opacity: 0.4 }
-                Mono { x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
+                                Mono { x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
                 Mono { x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
                 // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
                 Item {
@@ -718,7 +726,10 @@ ShellRoot {
                     model: [[1618, 92, 28, 0.95, 3100], [200, 900, 20, 0.8, 4300], [1760, 620, 16, 0.6, 3700], [150, 420, 14, 0.6, 5200]]
                     Text {
                         required property var modelData
-                        x: modelData[0] - modelData[2] / 2; y: modelData[1] - modelData[2] * 0.6
+                        required property int index
+                        property real drift: 0
+                        NumberAnimation on drift { from: 0; to: Math.PI * 2; duration: 23000 + index * 7000; loops: Animation.Infinite; running: root.shown && root.ytMode }
+                        x: modelData[0] - modelData[2] / 2 + 60 * Math.sin(drift + index); y: modelData[1] - modelData[2] * 0.6 + 40 * Math.cos(drift * 2 + index)
                         text: "✦"; font.pixelSize: modelData[2]; color: "#f4e6ff"
                         SequentialAnimation on opacity {
                             running: root.shown && root.ytMode; loops: Animation.Infinite
