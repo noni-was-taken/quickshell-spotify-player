@@ -466,7 +466,7 @@ ShellRoot {
             layer.textureSize: Qt.size(960, 540)
             layer.smooth: true
         }
-        Image { visible: !root.ytMode && root.bgStyle !== 5; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image { visible: !root.ytMode; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
         Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
             id: grain
             visible: !root.ytMode
@@ -480,7 +480,7 @@ ShellRoot {
         }
         ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
             anchors.fill: parent
-            visible: root.ytMode || root.bgStyle === 5
+            visible: root.ytMode
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
