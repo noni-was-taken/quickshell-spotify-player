@@ -83,8 +83,21 @@ Press **B** to cycle through them. All use the song's genre colours, react to th
 - **Starfield**: white stars at three depths drifting through nebulae in the genre's colours
 - **Lava lamp**: soft blobs that merge and split
 - **Pixel beach**: a pixel-art sunset with waves running up the sand
+- **Cosmic**: a glowing planet arc in the genre's colours
 
 The player starts on Silk each time it launches.
+
+## YouTube mode
+
+Open a YouTube video in your browser's **Picture-in-Picture**, then open the player: the video plays live in the middle, sharp and full size, with its title and controls. Closing the player puts the Picture-in-Picture window back where it was.
+
+Press **B** to switch themes:
+
+- **Cosmic**: a glowing planet arc around the video, with drifting moon, horizon lights, live coordinates and parallax; its colours slowly change over time
+- **Light rain**: soft blue clouds with gold sunlight and threads of light, with editorial serif type and no filter
+- **Prism**: out-of-focus window light splitting into colour across a dark surface, with a vertical progress line
+
+Firefox can pop videos out by itself when you switch tabs: set `media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled` to `true` in `about:config`.
 
 ## Customize
 
