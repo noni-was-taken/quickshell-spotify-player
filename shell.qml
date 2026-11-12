@@ -486,7 +486,7 @@ ShellRoot {
         }
         ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
             anchors.fill: parent
-            visible: root.ytMode
+            visible: root.ytMode && root.ytStyle === 0      // Light rain has no filter
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
@@ -494,7 +494,7 @@ ShellRoot {
             property real lines: 0
             property real edge: 0
         }
-        Image { anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
+        Image { visible: !(root.ytMode && root.ytStyle === 1); anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
 
         // ---- everything else is laid out at 1920x1080 and scaled to the screen ----
         Item {
@@ -712,7 +712,7 @@ ShellRoot {
                 }
                 ShaderEffect {      // the video's own filter: grain, fine scanlines and a soft edge, so it matches the scene
                     x: pipView.x; y: pipView.y; width: pipView.width; height: pipView.height
-                    visible: pipView.hasContent
+                    visible: pipView.hasContent && root.ytStyle === 0
                     fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
                     property real clock: root.seconds
                     property vector2d size: Qt.vector2d(width, height)
