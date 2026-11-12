@@ -166,7 +166,12 @@ ShellRoot {
     }
     readonly property bool ytHasLength: ytPlayer !== null && ytPlayer.lengthSupported && ytPlayer.length > 1    // Firefox often reports no length for YouTube
     readonly property bool ytPlaying: ytMode && ytPlayer !== null && ytPlayer.isPlaying
-    readonly property var ytStyles: ["Cosmic", "Light rain"]
+    readonly property var ytStyles: ["Cosmic", "Light rain", "Prism"]
+    readonly property var prismPalettes: [         // surface, warm light, cool fringe, shadow
+        ["#3c4a5c", "#ffd9b0", "#5f8fff", "#0c1118"],
+        ["#45475e", "#ffcaa0", "#7a8cff", "#0e0f19"],
+        ["#3a5058", "#fff0c8", "#4fb0ff", "#0a1416"]
+    ]
     readonly property var rainPalettes: [          // glow, light, cloud shadow, mist
         ["#d98a4a", "#ffd59a", "#5a6270", "#3a3530"],
         ["#c76a5a", "#ffc2a8", "#5a5a72", "#3a2f35"],
@@ -181,8 +186,8 @@ ShellRoot {
     // Cosmic: the colours slowly travel through these palettes, about 40 seconds each, blending in between
     function mixc(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1); }
     function cosmicColor(k) {      // the current YouTube theme's colours, slowly travelling through its palettes
-        const pal = ytStyle === 1 ? rainPalettes : ytPalettes;
-        const ph = (seconds / (ytStyle === 1 ? 60 : 40)) % pal.length;
+        const pal = ytStyle === 1 ? rainPalettes : ytStyle === 2 ? prismPalettes : ytPalettes;
+        const ph = (seconds / (ytStyle === 0 ? 40 : 60)) % pal.length;
         const i = Math.floor(ph), t = ph - i, e = t * t * (3 - 2 * t);
         return mixc(pal[i][k], pal[(i + 1) % pal.length][k], e);
     }
@@ -486,11 +491,11 @@ ShellRoot {
         }
         ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
             anchors.fill: parent
-            visible: root.ytMode && root.ytStyle === 0      // Light rain has no filter
+            visible: root.ytMode && root.ytStyle !== 1      // Light rain has no filter
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
-            property real grain: 0.13
+            property real grain: root.ytStyle === 2 ? 0.07 : 0.13
             property real lines: 0
             property real edge: 0
         }
@@ -749,6 +754,16 @@ ShellRoot {
                     }
                     Text { x: 1460; y: 940; text: "now listening"; font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 15; color: "#f3e7d4"; opacity: 0.6 }
                     SystemClock { id: clockNow; precision: SystemClock.Minutes }
+                }
+                // Prism: small plain type set sideways in two columns, like a flyer
+                Item {
+                    visible: root.ytStyle === 2
+                    anchors.fill: parent
+                    component Side: Text { font.family: root.fontName; font.pixelSize: 15; color: "#f2f4f8"; rotation: -90; transformOrigin: Item.TopLeft }
+                    Side { x: 1660; y: 820; text: Qt.formatDate(clockNow.date, "dd MMM") + " - " + Qt.formatDate(clockNow.date, "dddd") }
+                    Side { x: 1682; y: 820; width: 700; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle.toUpperCase() : "" }
+                    Side { x: 1660; y: 360; text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + " / " + root.clock(root.ytPlayer.length * 1000) : "Now playing"; opacity: 0.8 }
+                    Side { x: 1682; y: 360; width: 250; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; opacity: 0.8 }
                 }
                 Layer {         // middle: coordinates that keep reading out new values, like an instrument
                     visible: root.ytStyle === 0

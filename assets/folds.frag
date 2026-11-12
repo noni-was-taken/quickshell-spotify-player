@@ -306,9 +306,53 @@ vec3 lightRain(vec2 p) {
     return col;
 }
 
+// ---- YouTube mode (style 7): Prism. Sunlight through a window falls across a dark surface, out of focus,
+// splitting into colour at its edges. c0 surface, c1 warm light core, c2 cool fringe, c3 shadow ----
+float lightPatch(vec2 p, vec2 c, vec2 r, float ang) {
+    vec2 q = p - c;
+    q = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * q;
+    float d = length(q / r);
+    return smoothstep(1.0, 0.25, d);
+}
+vec3 prismLight(vec2 p, vec2 c, vec2 r, float ang, float split) {
+    // each colour channel sits a little apart, so the edges fringe blue on one side and orange on the other
+    vec2 dir = vec2(cos(ang + 0.6), sin(ang + 0.6)) * split;
+    return vec3(lightPatch(p + dir, c, r, ang), lightPatch(p, c, r, ang), lightPatch(p - dir * 1.4, c, r * 1.05, ang));
+}
+vec3 prism(vec2 p) {
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
+    vec2 q = p + look * 0.05;
+    // the surface: deep shadow upper left, a lit blue-grey plane lower right
+    float lit = smoothstep(-1.4, 1.2, q.x * 0.55 + q.y * 0.75);
+    vec3 col = mix(c3.rgb, c0.rgb, lit) + c0.rgb * 0.12 * fbm(q * 1.5 + clock * 0.01);
+    // light patches, placed around the video, each drifting slowly on its own path and breathing
+    vec3 light = vec3(0.0);
+    for (int k = 0; k < 8; k++) {
+        float fk = float(k);
+        vec2 home = fk < 0.5 ? vec2(-1.5, 0.62) : fk < 1.5 ? vec2(-1.42, -0.15) : fk < 2.5 ? vec2(0.25, 0.86) : fk < 3.5 ? vec2(-0.55, 0.9)
+                  : fk < 4.5 ? vec2(1.46, 0.3) : fk < 5.5 ? vec2(1.5, 0.78) : fk < 6.5 ? vec2(-0.9, -0.92) : vec2(-1.62, 0.95);
+        vec2 size = fk < 0.5 ? vec2(0.42, 0.28) : fk < 2.5 ? vec2(0.3, 0.13) : fk < 4.5 ? vec2(0.22, 0.12) : vec2(0.18, 0.1);
+        float sp = 0.04 + 0.03 * h1(fk + 1.0);
+        vec2 c = home + vec2(sin(clock * sp + fk * 2.1), cos(clock * sp * 0.8 + fk)) * vec2(0.14, 0.08);
+        vec2 r = size * (1.0 + 0.1 * sin(clock * 0.25 + fk * 1.7));
+        float breathe = 0.7 + 0.3 * sin(clock * (0.15 + 0.1 * h1(fk)) + fk * 2.0);
+        light += prismLight(q, c, r, -0.5 + 0.25 * h1(fk + 11.0), 0.035 + 0.025 * h1(fk + 13.0)) * breathe * (fk < 0.5 ? 1.3 : 1.0);
+    }
+    // window slits: bright bars in the top right, shimmering
+    vec2 wq = q - vec2(1.35, -0.78) - look * 0.04;
+    wq = mat2(cos(-0.42), -sin(-0.42), sin(-0.42), cos(-0.42)) * wq;
+    float slots = smoothstep(0.32, 0.18, abs(fract(wq.y * 4.2 + 0.5) - 0.5) * 2.0 - 0.3) * smoothstep(0.75, 0.2, abs(wq.x)) * smoothstep(0.45, 0.2, abs(wq.y));
+    light += vec3(0.95, 1.0, 1.05) * slots * (0.85 + 0.15 * sin(clock * 0.5));
+    // colour the light: a warm white core, cool fringes where the channels separate
+    vec3 tint = vec3(light.r * c1.r * 1.15, light.g * mix(c1.g, 1.0, 0.4), light.b * mix(c2.b, 1.0, 0.25) * 1.2);
+    col += tint * 1.15 * (1.0 + 0.3 * energy);
+    col += c2.rgb * 0.08 * (light.b - light.r);                       // a faint blue halo outside the warm core
+    return col;
+}
+
 void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * vec2(aspect, 1.0) * 2.0;
     vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p)
-             : style < 4.5 ? beach(p) : style < 5.5 ? cosmic(p) : lightRain(p);
+             : style < 4.5 ? beach(p) : style < 5.5 ? cosmic(p) : style < 6.5 ? lightRain(p) : prism(p);
     fragColor = vec4(min(col, vec3(1.0)), 1.0) * qt_Opacity;
 }
