@@ -205,9 +205,11 @@ vec3 beach(vec2 p) {
 vec2 px2p(vec2 px) { return (px / vec2(1920.0, 1080.0) - 0.5) * vec2(aspect, 1.0) * 2.0; }
 vec3 cosmic(vec2 p) {
     vec3 col = vec3(0.045, 0.042, 0.04);
+    // parallax: each body shifts against the mouse by its depth (the planet is far, the moon nearer, the horizon nearest)
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
     // the planet rim: a huge circle whose edge sweeps over the video; its colours slowly travel round it
     // the whole planet drifts slowly and breathes, so the rim wanders around the video
-    vec2 c = px2p(vec2(960.0 + 90.0 * sin(clock * 0.031), 1010.0 + 45.0 * cos(clock * 0.023)));
+    vec2 c = px2p(vec2(960.0 + 90.0 * sin(clock * 0.031), 1010.0 + 45.0 * cos(clock * 0.023))) - look * 0.035;
     float R = (950.0 + 35.0 * sin(clock * 0.017)) / 540.0;
     vec2 q = p - c;
     float r = length(q);
@@ -224,6 +226,7 @@ vec3 cosmic(vec2 p) {
     // a small glowing moon that travels slowly along the rim, with a flare that pulses with the bass
     float ma = -0.62 + 0.14 * sin(clock * 0.021);
     vec2 moon = c + (R + 0.04) * vec2(sin(ma * 3.14159), -cos(ma * 3.14159));
+    moon -= look * 0.04;
     vec2 m = p - moon;
     col += c0.rgb * 0.7 * exp(-dot(m, m) / 0.06);
     vec2 fl = p - (moon + vec2(0.17, -0.05));
@@ -232,7 +235,7 @@ vec3 cosmic(vec2 p) {
                 + exp(-fl.x * fl.x / 0.00002) * exp(-abs(fl.y) / 0.2) * 0.2;
     col += mix(c1.rgb, vec3(1.0, 0.95, 0.85), 0.6) * flare;
     // a thin bright horizon in the lower right, drifting slowly
-    vec2 hc = px2p(vec2(1880.0 + 160.0 * sin(clock * 0.027), 2150.0 + 50.0 * cos(clock * 0.019)));
+    vec2 hc = px2p(vec2(1880.0 + 160.0 * sin(clock * 0.027), 2150.0 + 50.0 * cos(clock * 0.019))) - look * 0.09;
     float hd = length(p - hc) - 2.35;
     float hx = smoothstep(px2p(vec2(900.0, 0.0)).x, px2p(vec2(1700.0, 0.0)).x, p.x);
     col += mix(c2.rgb, vec3(1.0, 0.9, 0.93), 0.6) * (exp(-hd * hd / 0.00012) * 0.9 + exp(-max(hd, 0.0) / 0.12) * 0.12 * step(0.0, hd)) * hx;
