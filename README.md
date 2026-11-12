@@ -80,7 +80,7 @@ Press **B** to cycle through them. All use the song's genre colours, react to th
 
 - **Silk**: folding sheets of colour that move like fabric under the mouse
 - **Water**: halftone dots on a sheet of water. Moving the mouse sends ripples through the dots, and bass hits set off small quakes in random spots
-- **Particle currents**: dots drifting on slow currents
+- **Starfield**: white stars at three depths drifting through nebulae in the genre's colours
 - **Lava lamp**: soft blobs that merge and split
 - **Pixel beach**: a pixel-art sunset with waves running up the sand
 

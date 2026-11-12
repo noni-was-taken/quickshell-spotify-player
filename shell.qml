@@ -182,7 +182,7 @@ ShellRoot {
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
     // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
-    readonly property var bgStyles: ["Silk", "Water", "Particle currents", "Lava lamp", "Pixel beach"]
+    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach"]
     property int bgStyle: 0
     property real seconds: 0
     property string styleNote: ""

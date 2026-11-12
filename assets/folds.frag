@@ -103,24 +103,39 @@ vec3 waterHalftone(vec2 p) {     // halftone dots that behave like a liquid: rip
     return mix(c0.rgb * 0.3, col * (0.75 + 0.12 * max(h, 0.0)), inDot);   // dim on purpose: Water sits as calmly as the other backgrounds
 }
 
-// ---- 2 particle currents: dots carried along slow currents; soft light, gentle reaction ----
+// ---- 2 starfield: three depths of stars drifting through faint nebula clouds; the mouse slowly swirls them ----
+vec3 stars(vec2 p, float cells, float keep, float size, float speed, float seed) {
+    vec2 q = p + vec2(clock * speed, clock * speed * 0.3) + slowMouse * speed * 4.0;   // nearer layers drift and shift more
+    float cs = 2.0 / cells;
+    vec2 cell = floor(q / cs);
+    float r = h2(cell + seed);
+    if (r < keep) return vec3(0.0);
+    vec2 off = vec2(h2(cell + seed + 1.3), h2(cell + seed + 2.7)) - 0.5;
+    float d = length(fract(q / cs) - 0.5 - off * 0.7) * cs;
+    float bright = (0.35 + 0.65 * pow(h2(cell + seed + 4.1), 3.0)) * (0.75 + 0.25 * sin(clock * 0.6 + r * 40.0)) * (1.0 + 0.2 * energy);
+    float s = size * (0.6 + 0.8 * h2(cell + seed + 5.9));
+    float light = exp(-d * d / (s * s)) + 0.12 * exp(-d / (s * 5.0));          // a sharp core and a soft halo
+    vec3 hue = mix(vec3(1.0, 0.93, 0.82), vec3(0.82, 0.9, 1.0), h2(cell + seed + 7.7));
+    return hue * light * bright;
+}
 vec3 currents(vec2 p) {
     vec2 m = p - slowMouse;
     float a = exp(-dot(m, m) / 0.2) * (0.1 + 0.4 * length(drag));
     p = slowMouse + mat2(cos(a), -sin(a), sin(a), cos(a)) * m;
-    float t = flow * 0.2;
-    vec2 w = vec2(fbm(p * 1.3 + vec2(t * 0.3, 0.0)), fbm(p * 1.3 + vec2(5.2, t * 0.25)));
-    vec2 q = p + (w - 0.5) * (1.2 + 0.25 * energy) + vec2(t * 0.15, 0.0);
-    float dens = fbm(q * 1.1 + 3.0);
-    float cs = 0.035;
-    vec2 cell = floor(q / cs);
-    vec2 off = vec2(h2(cell), h2(cell + 9.1)) - 0.5;
-    float d = length(fract(q / cs) - 0.5 - off * 0.6);
-    float twinkle = 0.7 + 0.3 * sin(clock * 0.4 + h2(cell + 3.0) * 30.0);
-    float dotLit = (1.0 - smoothstep(0.05, 0.15, d)) * step(h2(cell + 5.7), dens * 1.2) * twinkle;
-    vec3 tint = mix(c1.rgb, c2.rgb, smoothstep(0.35, 0.7, dens));
-    tint = mix(tint, c3.rgb, smoothstep(0.65, 0.85, w.x));
-    return c0.rgb + tint * dens * 0.3 + tint * dotLit * (0.7 + 0.25 * energy);
+    // nebulae in the genre colours: two soft glowing clouds with darker dust lanes, drifting very slowly
+    float t = clock * 0.008;
+    vec2 w = vec2(fbm(p * 0.45 + vec2(t, -t)), fbm(p * 0.45 + vec2(-t, t) + 5.0));
+    float cloudA = smoothstep(0.42, 0.85, fbm(p * 0.6 + (w - 0.5) * 1.6 + vec2(t * 2.0, 0.0)));
+    float cloudB = smoothstep(0.45, 0.9, fbm(p * 0.9 + (w.yx - 0.5) * 1.3 + 11.0 - vec2(0.0, t * 2.0)));
+    float dust = smoothstep(0.5, 0.75, fbm(p * 1.6 + w * 0.8 + 23.0));
+    vec3 col = c0.rgb * 0.5;
+    col += c1.rgb * cloudA * 0.38 + c2.rgb * cloudB * 0.3 + mix(c1.rgb, c2.rgb, 0.5) * cloudA * cloudB * 0.25;
+    col *= 1.0 - 0.45 * dust * max(cloudA, cloudB);
+    col += c3.rgb * 0.12 * smoothstep(0.3, 0.8, w.x);
+    col += stars(p, 90.0, 0.80, 0.0035, 0.004, 0.0);     // far: tiny and many
+    col += stars(p, 45.0, 0.88, 0.0055, 0.008, 31.0);    // middle
+    col += stars(p, 18.0, 0.94, 0.009, 0.016, 67.0);     // near: few, bigger, with halos
+    return col;
 }
 
 // ---- 3 lava lamp: soft blobs that slowly merge and split; bass and mouse only nudge them ----
