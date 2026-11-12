@@ -259,9 +259,56 @@ vec3 cosmic(vec2 p) {
     return col;
 }
 
+// ---- YouTube mode (style 6): Light rain. A glowing cloud bank pours thin threads of light down the sides. ----
+// c0 warm glow, c1 light colour, c2 cloud shadow, c3 mist
+float threads(vec2 p, float cx, float w, float seed) {
+    float d = abs(p.x - cx);
+    float inG = 1.0 - smoothstep(w * 0.6, w, d);
+    float lane = (p.x - cx) * 130.0;
+    float id = floor(lane);
+    float on = step(0.4, h1(id + seed));
+    float thin = exp(-pow((fract(lane) - 0.5) / 0.16, 2.0));
+    float top = -0.5 + 0.05 * sin(clock * 0.13 + seed) + 0.03 * h1(id + seed + 2.0);
+    float len = 0.75 + 0.35 * sin(clock * 0.06 + h1(id + seed) * 6.0);      // each thread slowly lengthens and shortens
+    float y = p.y - top;
+    float fall = smoothstep(0.0, 0.05, y) * exp(-max(y, 0.0) / len);
+    float pulse = 0.72 + 0.28 * sin(y * 7.0 - clock * 0.9 + h1(id + seed + 5.0) * 20.0);   // light running down
+    float shimmer = 0.7 + 0.3 * sin(clock * (0.4 + h1(id) * 1.2) + id);
+    return inG * on * thin * fall * pulse * shimmer * (0.55 + 0.6 * h1(id + seed + 9.0));
+}
+float threadGroups(vec2 p) {
+    return threads(p, -1.50, 0.07, 0.0) + threads(p, -1.31, 0.11, 13.0) + threads(p, 1.33, 0.10, 27.0)
+         + threads(p, 1.53, 0.06, 41.0) + threads(p, -0.45, 0.08, 55.0) + threads(p, 0.52, 0.06, 69.0);
+}
+vec3 lightRain(vec2 p) {
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
+    float t = clock * 0.018;
+    vec3 col = mix(vec3(0.055, 0.055, 0.065), c3.rgb * 0.75, smoothstep(-0.95, 0.25, p.y));
+    col = mix(col, vec3(0.05, 0.05, 0.06), smoothstep(0.55, 1.05, p.y));
+    vec2 g = (p - vec2(0.0, -0.45) + look * 0.03) * vec2(0.55, 1.3);
+    col += c0.rgb * 0.32 * exp(-dot(g, g) / 0.55);                         // warm light inside the cloud
+    // threads of light, with a slight rainbow fringe (each colour channel offset a hair)
+    vec2 tp = p + look * vec2(0.07, 0.04);
+    vec3 s = vec3(threadGroups(tp + vec2(0.0016, 0.0)), threadGroups(tp), threadGroups(tp - vec2(0.0016, 0.0)));
+    col += c1.rgb * s * 1.5 * (1.0 + 0.35 * energy);
+    col += c0.rgb * 0.06 * (s.r + s.g + s.b);                              // soft haze around them
+    // the cloud bank: billowing along the top, with heavier puffs over the threads at the sides
+    vec2 cp = p + look * 0.05;
+    float n = fbm(cp * 1.7 + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.9);
+    float shape = max(exp(-pow((cp.y + 0.82) / 0.26, 2.0)),
+                      exp(-(pow((abs(cp.x) - 1.42) / 0.38, 2.0) + pow((cp.y + 0.55) / 0.22, 2.0))));
+    float cloud = smoothstep(0.42, 0.72, n * 0.75 + shape * 0.55);
+    vec3 cloudCol = mix(mix(c0.rgb, c1.rgb, 0.4) * 0.9 + 0.08, c2.rgb, smoothstep(0.5, 0.85, n));
+    col = mix(col, cloudCol, cloud * 0.92);
+    // drifting mist low down
+    float mist = fbm(p * 1.1 + vec2(t * 2.5, t)) * smoothstep(-0.1, 0.9, p.y);
+    col = mix(col, c3.rgb * 1.1 + c0.rgb * 0.08, mist * 0.3);
+    return col;
+}
+
 void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * vec2(aspect, 1.0) * 2.0;
     vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p)
-             : style < 4.5 ? beach(p) : cosmic(p);
+             : style < 4.5 ? beach(p) : style < 5.5 ? cosmic(p) : lightRain(p);
     fragColor = vec4(min(col, vec3(1.0)), 1.0) * qt_Opacity;
 }

@@ -166,7 +166,12 @@ ShellRoot {
     }
     readonly property bool ytHasLength: ytPlayer !== null && ytPlayer.lengthSupported && ytPlayer.length > 1    // Firefox often reports no length for YouTube
     readonly property bool ytPlaying: ytMode && ytPlayer !== null && ytPlayer.isPlaying
-    readonly property var ytStyles: ["Cosmic"]      // one design for now; more themes will get their own designs
+    readonly property var ytStyles: ["Cosmic", "Light rain"]
+    readonly property var rainPalettes: [          // glow, light, cloud shadow, mist
+        ["#d98a4a", "#ffd59a", "#5a6270", "#3a3530"],
+        ["#c76a5a", "#ffc2a8", "#5a5a72", "#3a2f35"],
+        ["#c99a4a", "#fff0b0", "#56606a", "#36352e"]
+    ]
     readonly property var ytPalettes: [            // warm, highlight, middle, cool
         ["#ff5a1f", "#ffb15a", "#2f8a4a", "#1d5f86"],
         ["#ff3d7f", "#ffb347", "#7a3cff", "#2a3a9a"],
@@ -175,10 +180,11 @@ ShellRoot {
     ]
     // Cosmic: the colours slowly travel through these palettes, about 40 seconds each, blending in between
     function mixc(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1); }
-    readonly property real cosmicPhase: (seconds / 40) % ytPalettes.length
-    function cosmicColor(k) {
-        const i = Math.floor(cosmicPhase), t = cosmicPhase - i, e = t * t * (3 - 2 * t);
-        return mixc(ytPalettes[i][k], ytPalettes[(i + 1) % ytPalettes.length][k], e);
+    function cosmicColor(k) {      // the current YouTube theme's colours, slowly travelling through its palettes
+        const pal = ytStyle === 1 ? rainPalettes : ytPalettes;
+        const ph = (seconds / (ytStyle === 1 ? 60 : 40)) % pal.length;
+        const i = Math.floor(ph), t = ph - i, e = t * t * (3 - 2 * t);
+        return mixc(pal[i][k], pal[(i + 1) % pal.length][k], e);
     }
     readonly property string monoFont: "JetBrainsMono Nerd Font"
     readonly property color ink: "#ead8b8"
@@ -440,7 +446,7 @@ ShellRoot {
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
-            property real style: root.ytMode ? 5 : root.bgStyle
+            property real style: root.ytMode ? 5 + root.ytStyle : root.bgStyle
             property real clock: root.seconds
             property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
@@ -463,7 +469,7 @@ ShellRoot {
             property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.c2
             property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.c3
             layer.enabled: true                     // drawn small and stretched: the look is soft, and it keeps the GPU cost low
-            layer.textureSize: Qt.size(960, 540)
+            layer.textureSize: root.ytMode ? Qt.size(1920, 1080) : Qt.size(960, 540)   // full size in YouTube mode, for thin lines
             layer.smooth: true
         }
         Image { visible: !root.ytMode; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
@@ -626,13 +632,13 @@ ShellRoot {
                 visible: root.ytMode
                 anchors.fill: parent
                 component Mono: Text {
-                    font.family: root.monoFont; font.weight: Font.Light; font.pixelSize: 12; font.letterSpacing: 7
+                    font.family: root.ytStyle === 0 ? root.monoFont : root.fontName; font.weight: Font.Light; font.pixelSize: 12; font.letterSpacing: 7
                     font.capitalization: Font.AllUppercase
                     color: root.ink
                 }
                 // dark panels with thin gaps; the corners facing the video are cut round so the glow curls around it
                 Repeater {
-                    model: [
+                    model: root.ytStyle !== 0 ? [] : [
                         [2, 2, 302, 92, 0, 0, 120, 0], [308, 2, 1304, 92, 0, 0, 0, 0], [1616, 2, 302, 92, 0, 0, 0, 120],
                         [2, 98, 302, 744, 0, 0, 0, 0], [1616, 98, 302, 744, 0, 0, 0, 0],
                         [2, 846, 302, 232, 0, 120, 0, 0], [308, 846, 1304, 232, 0, 0, 0, 0], [1616, 846, 302, 232, 120, 0, 0, 0]
@@ -655,6 +661,7 @@ ShellRoot {
                     y: -(parent.look.y * 18 + parent.driftY * 10) * depth
                 }
                 Layer {         // far: long hairlines
+                    visible: root.ytStyle === 0
                     depth: 0.5
                     Canvas {
                         anchors.fill: parent
@@ -668,6 +675,7 @@ ShellRoot {
                     }
                 }
                 Layer {         // near: circle markers
+                    visible: root.ytStyle === 0
                     depth: 1.2
                     Canvas {
                         anchors.fill: parent
@@ -681,6 +689,7 @@ ShellRoot {
                     }
                 }
                 Canvas {        // the video's corner brackets stay put: they frame the video
+                    visible: root.ytStyle === 0
                     anchors.fill: parent
                     onPaint: {
                         const g = getContext("2d");
@@ -715,8 +724,34 @@ ShellRoot {
                 Mono { x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
                 Mono { x: 60; y: 72; text: "YouTube"; opacity: 0.85 }
                 Mono { x: 1700; y: 54; text: "Theme"; font.pixelSize: 11; opacity: 0.4 }
-                Mono { x: 1700; y: 72; text: "Cosmic"; font.pixelSize: 11; opacity: 0.75 }
+                Mono { x: 1700; y: 72; text: root.ytStyles[root.ytStyle]; font.pixelSize: 11; opacity: 0.75 }
+                Mono { x: 60; y: 1034; text: "Press B / next theme"; font.pixelSize: 10; opacity: 0.4 }
+                // Light rain: editorial type, a large italic serif title with a small sans channel line and a date block
+                Item {
+                    visible: root.ytStyle === 1
+                    anchors.fill: parent
+                    Text { x: 300; y: 846; text: "\u201C"; font.family: "Noto Serif Display"; font.weight: Font.Light; font.pixelSize: 72; color: "#f3e7d4"; opacity: 0.55 }
+                    Text {
+                        x: 350; y: 860; width: 980; elide: Text.ElideRight
+                        text: root.ytPlayer ? root.ytPlayer.trackTitle : ""
+                        font.family: "Noto Serif Display"; font.weight: Font.Light; font.italic: true; font.pixelSize: 46
+                        color: "#f6ecdc"
+                    }
+                    Text {
+                        x: 352; y: 922; width: 900; elide: Text.ElideRight
+                        text: root.ytPlayer ? root.ytPlayer.trackArtist : ""
+                        font.family: root.fontName; font.pixelSize: 15; font.letterSpacing: 1; color: "#f3e7d4"; opacity: 0.75
+                    }
+                    Column {
+                        x: 1460; y: 868; spacing: 2
+                        Text { text: Qt.formatDate(clockNow.date, "dd") + "  \u00B7  " + Qt.formatDate(clockNow.date, "MM"); font.family: root.fontName; font.weight: Font.DemiBold; font.pixelSize: 18; color: "#f6ecdc" }
+                        Text { text: "( " + Qt.formatDate(clockNow.date, "dddd") + ", " + Qt.formatTime(clockNow.date, "hh:mm") + " )"; font.family: root.fontName; font.pixelSize: 12; color: "#f3e7d4"; opacity: 0.7 }
+                    }
+                    Text { x: 1460; y: 940; text: "now listening"; font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 15; color: "#f3e7d4"; opacity: 0.6 }
+                    SystemClock { id: clockNow; precision: SystemClock.Minutes }
+                }
                 Layer {         // middle: coordinates that keep reading out new values, like an instrument
+                    visible: root.ytStyle === 0
                     depth: 0.8
                     readonly property real lat: 12.3641 + 0.35 * Math.sin(root.seconds * 0.043) + 0.04 * Math.sin(root.seconds * 0.71)
                     readonly property real lon: 13.8277 + 0.5 * Math.cos(root.seconds * 0.037) + 0.05 * Math.sin(root.seconds * 0.63)
@@ -725,8 +760,8 @@ ShellRoot {
                     Mono { x: 60; y: 700; text: "Signal " + (60 + 35 * root.energy + 4 * Math.sin(root.seconds * 1.3)).toFixed(1); font.pixelSize: 10; font.letterSpacing: 6; opacity: 0.35; font.features: ({ "tnum": 1 }) }
                     Mono { x: 60; y: 720; text: "Orbit " + ((root.seconds * 0.9) % 360).toFixed(1) + "°"; font.pixelSize: 10; font.letterSpacing: 6; opacity: 0.35; font.features: ({ "tnum": 1 }) }
                 }
-                                Mono { x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
-                Mono { x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
+                                Mono { visible: root.ytStyle === 0; x: 320; y: 870; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; font.pixelSize: 13; font.letterSpacing: 9; opacity: 0.6 }
+                Mono { visible: root.ytStyle === 0; x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
                 // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
                 Item {
                     x: 360; y: 975; width: 1240; height: 24
@@ -758,7 +793,7 @@ ShellRoot {
                 }
                 // sparkles that twinkle
                 Repeater {
-                    model: [[1618, 92, 28, 0.95, 3100], [200, 900, 20, 0.8, 4300], [1760, 620, 16, 0.6, 3700], [150, 420, 14, 0.6, 5200]]
+                    model: root.ytStyle === 0 ? [[1618, 92, 28, 0.95, 3100], [200, 900, 20, 0.8, 4300], [1760, 620, 16, 0.6, 3700], [150, 420, 14, 0.6, 5200]] : []
                     Text {
                         required property var modelData
                         required property int index
