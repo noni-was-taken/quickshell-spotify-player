@@ -726,11 +726,11 @@ ShellRoot {
                     property real edge: 0.35
                 }
                 // labels
-                Mono { x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
-                Mono { x: 60; y: 72; text: "YouTube"; opacity: 0.85 }
-                Mono { x: 1700; y: 54; text: "Theme"; font.pixelSize: 11; opacity: 0.4 }
-                Mono { x: 1700; y: 72; text: root.ytStyles[root.ytStyle]; font.pixelSize: 11; opacity: 0.75 }
-                Mono { x: 60; y: 1034; text: "Press B / next theme"; font.pixelSize: 10; opacity: 0.4 }
+                Mono { visible: root.ytStyle === 0; x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
+                Mono { visible: root.ytStyle === 0; x: 60; y: 72; text: "YouTube"; opacity: 0.85 }
+                Mono { visible: root.ytStyle === 0; x: 1700; y: 54; text: "Theme"; font.pixelSize: 11; opacity: 0.4 }
+                Mono { visible: root.ytStyle === 0; x: 1700; y: 72; text: root.ytStyles[root.ytStyle]; font.pixelSize: 11; opacity: 0.75 }
+                Mono { visible: root.ytStyle === 0; x: 60; y: 1034; text: "Press B / next theme"; font.pixelSize: 10; opacity: 0.4 }
                 // Light rain: editorial type, a large italic serif title with a small sans channel line and a date block
                 Item {
                     visible: root.ytStyle === 1
@@ -754,6 +754,35 @@ ShellRoot {
                     }
                     Text { x: 1460; y: 940; text: "now listening"; font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 15; color: "#f3e7d4"; opacity: 0.6 }
                     SystemClock { id: clockNow; precision: SystemClock.Minutes }
+                    Text { x: 1700; y: 52; text: "light rain"; font.family: "Noto Serif Display"; font.italic: true; font.weight: Font.Light; font.pixelSize: 22; color: "#f6ecdc"; opacity: 0.8 }
+                    Text { x: 60; y: 1030; text: "press b for another sky"; font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 14; color: "#f3e7d4"; opacity: 0.5 }
+                    // progress: a thin thread of light, brighter where played, with a soft glow at the playhead
+                    Item {
+                        x: 352; y: 984; width: 1060; height: 24
+                        readonly property real f: root.ytHasLength ? root.ytPlayer.position / root.ytPlayer.length : 0
+                        property real wander: 0      // when the length is unknown, the glow drifts slowly to and fro
+                        SequentialAnimation on wander { running: root.shown && root.ytMode && !root.ytHasLength; loops: Animation.Infinite
+                            NumberAnimation { from: 0.05; to: 0.95; duration: 9000; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 0.95; to: 0.05; duration: 9000; easing.type: Easing.InOutSine } }
+                        readonly property real at: root.ytHasLength ? f : wander
+                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 1; color: "#f3e7d4"; opacity: 0.22 }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter; width: parent.width * (root.ytHasLength ? parent.f : 0); height: 1.5
+                            gradient: Gradient { orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: Qt.rgba(1, 0.92, 0.75, 0.15) } GradientStop { position: 1; color: Qt.rgba(1, 0.95, 0.85, 0.95) } }
+                        }
+                        Rectangle { x: parent.width * parent.at - 30; anchors.verticalCenter: parent.verticalCenter; width: 60; height: 20; radius: 10
+                            gradient: Gradient { orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: "transparent" } GradientStop { position: 0.5; color: Qt.rgba(1, 0.9, 0.7, 0.35) } GradientStop { position: 1; color: "transparent" } } }
+                        Rectangle { x: parent.width * parent.at - 3; anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: "#fff4e0" }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: m => { if (root.ytHasLength && root.ytPlayer.canSeek) root.ytPlayer.position = m.x / width * root.ytPlayer.length; } }
+                    }
+                    Text {
+                        x: 1430; y: 978; text: (root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + "  /  " + root.clock(root.ytPlayer.length * 1000) + "   " : "") + (root.ytPlaying ? "pause" : "play")
+                        font.family: "Noto Serif Display"; font.italic: true; font.pixelSize: 17; color: "#f6ecdc"; opacity: 0.85
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle() }
+                    }
                 }
                 // Prism: small plain type set sideways in two columns, like a flyer
                 Item {
@@ -764,6 +793,24 @@ ShellRoot {
                     Side { x: 1682; y: 820; width: 700; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle.toUpperCase() : "" }
                     Side { x: 1660; y: 360; text: root.ytHasLength ? root.clock(root.ytPlayer.position * 1000) + " / " + root.clock(root.ytPlayer.length * 1000) : "Now playing"; opacity: 0.8 }
                     Side { x: 1682; y: 360; width: 250; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackArtist : ""; opacity: 0.8 }
+                    Side { x: 1738; y: 1000; text: root.ytPlaying ? "PAUSE" : "PLAY"; font.letterSpacing: 4; font.pixelSize: 12
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle() } }
+                    Side { x: 1738; y: 220; text: "PRISM  /  B"; font.letterSpacing: 4; font.pixelSize: 11; opacity: 0.55 }
+                    // progress: a thin vertical line that fills upward, edged in blue and orange like the light
+                    Item {
+                        x: 1748; y: 240; width: 6; height: 680
+                        readonly property real f: root.ytHasLength ? root.ytPlayer.position / root.ytPlayer.length : 0
+                        property real breathe: 0
+                        SequentialAnimation on breathe { running: root.shown && root.ytMode && !root.ytHasLength; loops: Animation.Infinite
+                            NumberAnimation { from: 0; to: 1; duration: 4000; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1; to: 0; duration: 4000; easing.type: Easing.InOutSine } }
+                        Rectangle { x: 2; width: 1; height: parent.height; color: "#f2f4f8"; opacity: 0.2 + (root.ytHasLength ? 0 : 0.25 * parent.breathe) }
+                        Rectangle { x: 0; y: parent.height * (1 - parent.f); width: 1; height: parent.height * parent.f; color: "#6f9bff"; opacity: 0.8 }
+                        Rectangle { x: 2; y: parent.height * (1 - parent.f); width: 1.5; height: parent.height * parent.f; color: "#ffffff" }
+                        Rectangle { x: 4; y: parent.height * (1 - parent.f); width: 1; height: parent.height * parent.f; color: "#ffb070"; opacity: 0.8 }
+                        MouseArea { x: -10; width: 26; height: parent.height; cursorShape: Qt.PointingHandCursor
+                            onClicked: m => { if (root.ytHasLength && root.ytPlayer.canSeek) root.ytPlayer.position = (1 - m.y / height) * root.ytPlayer.length; } }
+                    }
                 }
                 Layer {         // middle: coordinates that keep reading out new values, like an instrument
                     visible: root.ytStyle === 0
@@ -779,6 +826,7 @@ ShellRoot {
                 Mono { visible: root.ytStyle === 0; x: 320; y: 894; width: 1280; elide: Text.ElideRight; text: root.ytPlayer ? root.ytPlayer.trackTitle : ""; font.pixelSize: 28; font.letterSpacing: 10 }
                 // play/pause, times and a barcode for progress (played bars bright; a slow scan when the length is unknown)
                 Item {
+                    visible: root.ytStyle === 0
                     x: 360; y: 975; width: 1240; height: 24
                     MouseArea { x: -40; width: 30; height: 24; cursorShape: Qt.PointingHandCursor; onClicked: root.ytToggle()
                         Mono { anchors.centerIn: parent; text: root.ytPlaying ? "||" : "▶"; font.letterSpacing: 0; font.pixelSize: 14 } }
