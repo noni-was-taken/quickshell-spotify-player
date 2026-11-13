@@ -364,9 +364,41 @@ vec3 prism(vec2 p) {
     return col;
 }
 
+// ---- Spotify (style 8): Balance. Broad soft sweeps of grey light on black, with one warm smear of colour ----
+float sweep(vec2 p, float ang, float off, float width, float seed) {
+    vec2 dir = vec2(cos(ang), sin(ang));
+    float warp = (fbm(p * 0.8 + vec2(seed, clock * 0.015)) - 0.5) * 0.6;
+    float d = dot(p, vec2(-dir.y, dir.x)) - off + warp;
+    float along = dot(p, dir);
+    return exp(-sq(d / width)) * (0.6 + 0.4 * fbm(vec2(along * 0.7, seed + clock * 0.02)));
+}
+vec3 balance(vec2 p) {
+    vec2 look = abs(slowMouse.x) > 50.0 ? vec2(0.0) : slowMouse;
+    vec2 q = p + look * 0.04;
+    float t = clock;
+    vec3 col = vec3(0.035);
+    // grey light: a few broad sweeps that slowly slide and swell
+    float l = sweep(q, 1.15, -1.25 + 0.12 * sin(t * 0.05), 0.45, 1.0) * 0.55
+            + sweep(q, 1.05, 0.35 + 0.15 * sin(t * 0.04 + 1.0), 0.35, 4.0) * 0.38
+            + sweep(q, 1.25, 1.35 + 0.1 * sin(t * 0.06 + 2.0), 0.5, 7.0) * 0.5
+            + sweep(q, 0.95, -0.4 + 0.12 * cos(t * 0.035), 0.22, 9.0) * 0.22;
+    col += vec3(0.82, 0.82, 0.84) * l * (1.0 + 0.15 * energy);
+    // the warm smear: a soft diagonal streak, red at the top fading through orange and gold to a faint green
+    vec2 c = vec2(0.15 + 0.1 * sin(t * 0.03), -0.12 + 0.06 * cos(t * 0.025)) - look * 0.03;
+    vec2 r = q - c;
+    float a = 1.0;
+    vec2 sq2 = mat2(cos(a), -sin(a), sin(a), cos(a)) * r;
+    float smear = exp(-(sq(sq2.x / 0.5) + sq(sq2.y / 0.13))) * (0.8 + 0.2 * sin(t * 0.2)) * (1.0 + 0.3 * energy);
+    float u = clamp(sq2.x / 0.9 + 0.5, 0.0, 1.0);
+    vec3 hue = mix(vec3(0.85, 0.22, 0.12), vec3(0.95, 0.5, 0.18), smoothstep(0.2, 0.55, u));
+    hue = mix(hue, vec3(0.75, 0.75, 0.45), smoothstep(0.55, 0.9, u));
+    col += hue * smear * 0.75;
+    return col;
+}
+
 void main() {
     vec2 p = (qt_TexCoord0 - 0.5) * vec2(aspect, 1.0) * 2.0;
     vec3 col = style < 0.5 ? silk(p) : style < 1.5 ? waterHalftone(p) : style < 2.5 ? currents(p) : style < 3.5 ? lava(p)
-             : style < 4.5 ? beach(p) : style < 5.5 ? cosmic(p) : style < 6.5 ? lightRain(p, step(6.1, style)) : prism(p);
+             : style < 4.5 ? beach(p) : style < 5.5 ? cosmic(p) : style < 6.5 ? lightRain(p, step(6.1, style)) : style < 7.5 ? prism(p) : balance(p);
     fragColor = vec4(min(col, vec3(1.0)), 1.0) * qt_Opacity;
 }

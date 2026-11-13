@@ -86,6 +86,7 @@ Press **B** to cycle through them. All use the song's genre colours, react to th
 - **Cosmic**: a glowing planet arc in the genre's colours
 - **Light rain**: soft blue clouds with gold sunlight and threads of light
 - **Prism**: out-of-focus window light splitting into colour
+- **Balance**: soft sweeps of grey light on black with one warm smear of colour, under heavy grain
 
 The player starts on Silk each time it launches.
 

@@ -271,7 +271,7 @@ ShellRoot {
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
     // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
-    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach", "Cosmic", "Light rain", "Prism"]
+    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach", "Cosmic", "Light rain", "Prism", "Balance"]
     // Cosmic on the Spotify player follows the genre: its rim colours come from the genre palette
     readonly property var cosmicSpotify: [Qt.lighter(c1, 1.6), Qt.lighter(c2, 1.4), Qt.lighter(c3, 1.6), Qt.lighter(c1, 1.1)]
     property int bgStyle: 0
@@ -479,10 +479,10 @@ ShellRoot {
             layer.textureSize: root.ytMode || root.bgStyle >= 6 ? Qt.size(1920, 1080) : Qt.size(960, 540)   // full size in YouTube mode, for thin lines
             layer.smooth: true
         }
-        Image { visible: !root.ytMode && root.bgStyle !== 6; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image { visible: !root.ytMode && root.bgStyle !== 6 && root.bgStyle !== 8; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
         Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
             id: grain
-            visible: !root.ytMode && root.bgStyle !== 6      // Light rain has no filter
+            visible: !root.ytMode && root.bgStyle !== 6 && root.bgStyle !== 8      // Light rain has no filter; Balance uses its own grain
             x: -220; y: -220; width: parent.width + 220; height: parent.height + 220
             source: "file://" + root.dir + "/assets/grain.png"; fillMode: Image.Tile; opacity: 0.3
             horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop
@@ -493,11 +493,11 @@ ShellRoot {
         }
         ShaderEffect {      // YouTube mode: each background's own filter, at full resolution
             anchors.fill: parent
-            visible: root.ytMode && root.ytStyle !== 1      // Light rain has no filter
+            visible: (root.ytMode && root.ytStyle !== 1) || (!root.ytMode && root.bgStyle === 8)      // Light rain has no filter; Balance has heavy grain
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
-            property real grain: root.ytStyle === 2 ? 0.07 : 0.13
+            property real grain: !root.ytMode ? 0.16 : root.ytStyle === 2 ? 0.07 : 0.13
             property real lines: 0
             property real edge: 0
         }
