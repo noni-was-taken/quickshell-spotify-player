@@ -377,16 +377,16 @@ vec3 balance(vec2 p) {
     vec2 q = p + look * 0.04;
     float t = clock;
     vec3 col = vec3(0.035);
-    // grey light: a few broad sweeps that slowly slide and swell
-    float l = sweep(q, 1.15, -1.25 + 0.12 * sin(t * 0.05), 0.45, 1.0) * 0.55
-            + sweep(q, 1.05, 0.35 + 0.15 * sin(t * 0.04 + 1.0), 0.35, 4.0) * 0.38
-            + sweep(q, 1.25, 1.35 + 0.1 * sin(t * 0.06 + 2.0), 0.5, 7.0) * 0.5
-            + sweep(q, 0.95, -0.4 + 0.12 * cos(t * 0.035), 0.22, 9.0) * 0.22;
+    // grey light: broad sweeps that slowly sway across the screen, swell and fade
+    float l = sweep(q, 1.15 + 0.08 * sin(t * 0.07), -1.25 + 0.45 * sin(t * 0.09), 0.45 + 0.08 * sin(t * 0.11), 1.0) * 0.55
+            + sweep(q, 1.05 + 0.1 * sin(t * 0.05 + 2.0), 0.35 + 0.5 * sin(t * 0.07 + 1.0), 0.35, 4.0) * (0.3 + 0.15 * sin(t * 0.13))
+            + sweep(q, 1.25 + 0.06 * cos(t * 0.06), 1.35 + 0.4 * sin(t * 0.08 + 2.0), 0.5, 7.0) * 0.5
+            + sweep(q, 0.95 + 0.12 * sin(t * 0.09 + 1.0), -0.4 + 0.6 * cos(t * 0.06), 0.22, 9.0) * (0.15 + 0.12 * sin(t * 0.17 + 1.0));
     col += vec3(0.82, 0.82, 0.84) * l * (1.0 + 0.15 * energy);
     // the warm smear: a soft diagonal streak, red at the top fading through orange and gold to a faint green
-    vec2 c = vec2(0.15 + 0.1 * sin(t * 0.03), -0.12 + 0.06 * cos(t * 0.025)) - look * 0.03;
+    vec2 c = vec2(0.15 + 0.55 * sin(t * 0.045), -0.12 + 0.3 * cos(t * 0.035)) - look * 0.03;
     vec2 r = q - c;
-    float a = 1.0;
+    float a = 1.0 + 0.2 * sin(t * 0.05);
     vec2 sq2 = mat2(cos(a), -sin(a), sin(a), cos(a)) * r;
     float smear = exp(-(sq(sq2.x / 0.5) + sq(sq2.y / 0.13))) * (0.8 + 0.2 * sin(t * 0.2)) * (1.0 + 0.3 * energy);
     float u = clamp(sq2.x / 0.9 + 0.5, 0.0, 1.0);

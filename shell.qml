@@ -497,7 +497,8 @@ ShellRoot {
             fragmentShader: "file://" + root.dir + "/assets/ytfilter.frag.qsb"
             property real clock: root.seconds
             property vector2d size: Qt.vector2d(width, height)
-            property real grain: !root.ytMode ? 0.16 : root.ytStyle === 2 ? 0.07 : 0.13
+            property real grain: !root.ytMode ? 0.14 : root.ytStyle === 2 ? 0.07 : 0.13
+            property real rate: !root.ytMode ? 2 : 12      // Balance: slow and smooth
             property real lines: 0
             property real edge: 0
         }
@@ -726,6 +727,7 @@ ShellRoot {
                     property real grain: 0.09
                     property real lines: 0.12
                     property real edge: 0.35
+                    property real rate: 12
                 }
                 // labels
                 Mono { visible: root.ytStyle === 0; x: 60; y: 54; text: "Now playing"; opacity: 0.55 }
