@@ -185,9 +185,10 @@ ShellRoot {
     ]
     // Cosmic: the colours slowly travel through these palettes, about 40 seconds each, blending in between
     function mixc(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1); }
-    function cosmicColor(k) {      // the current YouTube theme's colours, slowly travelling through its palettes
-        const pal = ytStyle === 1 ? rainPalettes : ytStyle === 2 ? prismPalettes : ytPalettes;
-        const ph = (seconds / (ytStyle === 0 ? 40 : 60)) % pal.length;
+    function cosmicColor(k) { return themeColor(ytStyle, k); }
+    function themeColor(theme, k) {      // a theme's colours (0 Cosmic, 1 Light rain, 2 Prism), slowly travelling through its palettes
+        const pal = theme === 1 ? rainPalettes : theme === 2 ? prismPalettes : ytPalettes;
+        const ph = (seconds / (theme === 0 ? 40 : 60)) % pal.length;
         const i = Math.floor(ph), t = ph - i, e = t * t * (3 - 2 * t);
         return mixc(pal[i][k], pal[(i + 1) % pal.length][k], e);
     }
@@ -270,7 +271,7 @@ ShellRoot {
     property real energy: 0
     // Fabric: the folds near the pointer get dragged a little as it moves, then settle back. Not a follow effect.
     // Background looks, all driven by the same folds, colours, bass and mouse. B cycles them.
-    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach", "Cosmic"]
+    readonly property var bgStyles: ["Silk", "Water", "Starfield", "Lava lamp", "Pixel beach", "Cosmic", "Light rain", "Prism"]
     // Cosmic on the Spotify player follows the genre: its rim colours come from the genre palette
     readonly property var cosmicSpotify: [Qt.lighter(c1, 1.6), Qt.lighter(c2, 1.4), Qt.lighter(c3, 1.6), Qt.lighter(c1, 1.1)]
     property int bgStyle: 0
@@ -469,18 +470,18 @@ ShellRoot {
                     else root.pointer = root.lag = root.slowPointer = Qt.vector2d(99, 99);
                 }
             }
-            property color c0: root.ytMode ? root.cosmicColor(0) : root.bgStyle === 5 ? root.cosmicSpotify[0] : root.c0
-            property color c1: root.ytMode ? root.cosmicColor(1) : root.bgStyle === 5 ? root.cosmicSpotify[1] : root.c1
-            property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.c2
-            property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.c3
+            property color c0: root.ytMode ? root.cosmicColor(0) : root.bgStyle === 5 ? root.cosmicSpotify[0] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 0) : root.c0
+            property color c1: root.ytMode ? root.cosmicColor(1) : root.bgStyle === 5 ? root.cosmicSpotify[1] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 1) : root.c1
+            property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 2) : root.c2
+            property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 3) : root.c3
             layer.enabled: true                     // drawn small and stretched: the look is soft, and it keeps the GPU cost low
-            layer.textureSize: root.ytMode ? Qt.size(1920, 1080) : Qt.size(960, 540)   // full size in YouTube mode, for thin lines
+            layer.textureSize: root.ytMode || root.bgStyle >= 6 ? Qt.size(1920, 1080) : Qt.size(960, 540)   // full size in YouTube mode, for thin lines
             layer.smooth: true
         }
-        Image { visible: !root.ytMode; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
+        Image { visible: !root.ytMode && root.bgStyle !== 6; anchors.fill: parent; source: "file://" + root.dir + "/assets/mesh.png"; fillMode: Image.Tile; smooth: false; horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop }
         Image {     // film grain, jumped to a random spot 4 times a second so it shifts gently
             id: grain
-            visible: !root.ytMode
+            visible: !root.ytMode && root.bgStyle !== 6      // Light rain has no filter
             x: -220; y: -220; width: parent.width + 220; height: parent.height + 220
             source: "file://" + root.dir + "/assets/grain.png"; fillMode: Image.Tile; opacity: 0.3
             horizontalAlignment: Image.AlignLeft; verticalAlignment: Image.AlignTop
@@ -499,7 +500,7 @@ ShellRoot {
             property real lines: 0
             property real edge: 0
         }
-        Image { visible: !(root.ytMode && root.ytStyle === 1); anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
+        Image { visible: !(root.ytMode && root.ytStyle === 1) && !(!root.ytMode && root.bgStyle === 6); anchors.fill: parent; source: "file://" + root.dir + "/assets/vignette.png" }
 
         // ---- everything else is laid out at 1920x1080 and scaled to the screen ----
         Item {

@@ -84,6 +84,8 @@ Press **B** to cycle through them. All use the song's genre colours, react to th
 - **Lava lamp**: soft blobs that merge and split
 - **Pixel beach**: a pixel-art sunset with waves running up the sand
 - **Cosmic**: a glowing planet arc in the genre's colours
+- **Light rain**: soft blue clouds with gold sunlight and threads of light
+- **Prism**: out-of-focus window light splitting into colour
 
 The player starts on Silk each time it launches.
 
