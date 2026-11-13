@@ -452,7 +452,7 @@ ShellRoot {
             property real energy: root.energy
             property real aspect: win.width / win.height
             property vector2d mouse: root.pointer
-            property real style: root.ytMode ? 5 + root.ytStyle : root.bgStyle
+            property real style: root.ytMode ? 5 + root.ytStyle : root.bgStyle === 6 ? 6.2 : root.bgStyle   // 6.2 = Light rain in the Spotify layout
             property real clock: root.seconds
             property vector2d slowMouse: root.slowPointer
             property vector2d drag: {
@@ -464,6 +464,7 @@ ShellRoot {
                 onPointChanged: {
                     const a = win.width / win.height;
                     root.pointer = Qt.vector2d((point.position.x / win.width - 0.5) * a * 2, (point.position.y / win.height - 0.5) * 2);
+                    if (root.slowPointer.x > 90) { root.slowPointer = root.pointer; root.lag = root.pointer; }   // first move after entering: start from here, don't glide in from off-screen
                 }
                 onHoveredChanged: {        // entering isn't a drag; leaving parks the pointer off-screen so nothing reacts to it
                     if (hovered) { root.lag = root.pointer; root.slowPointer = root.pointer; }
