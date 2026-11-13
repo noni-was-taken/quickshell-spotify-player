@@ -358,9 +358,10 @@ vec3 prism(vec2 p) {
     float slots = smoothstep(0.32, 0.18, abs(fract(wq.y * 4.2 + 0.5) - 0.5) * 2.0 - 0.3) * smoothstep(0.75, 0.2, abs(wq.x)) * smoothstep(0.45, 0.2, abs(wq.y));
     light += vec3(0.95, 1.0, 1.05) * slots * (0.85 + 0.15 * sin(clock * 0.5));
     // colour the light: a warm white core, cool fringes where the channels separate
-    vec3 tint = vec3(light.r * c1.r * 1.15, light.g * mix(c1.g, 1.0, 0.4), light.b * mix(c2.b, 1.0, 0.25) * 1.2);
+    float core = min(light.r, min(light.g, light.b));
+    vec3 tint = vec3(1.0, 0.97, 0.92) * core + c1.rgb * max(light.r - light.b, 0.0) * 1.3 + c2.rgb * max(light.b - light.r, 0.0) * 1.4
+              + mix(c1.rgb, c2.rgb, 0.5) * max(light.g - core, 0.0) * 0.6;
     col += tint * 1.15 * (1.0 + 0.3 * energy);
-    col += c2.rgb * 0.08 * (light.b - light.r);                       // a faint blue halo outside the warm core
     return col;
 }
 
@@ -390,8 +391,8 @@ vec3 balance(vec2 p) {
     vec2 sq2 = mat2(cos(a), -sin(a), sin(a), cos(a)) * r;
     float smear = exp(-(sq(sq2.x / 0.5) + sq(sq2.y / 0.13))) * (0.8 + 0.2 * sin(t * 0.2)) * (1.0 + 0.3 * energy);
     float u = clamp(sq2.x / 0.9 + 0.5, 0.0, 1.0);
-    vec3 hue = mix(vec3(0.85, 0.22, 0.12), vec3(0.95, 0.5, 0.18), smoothstep(0.2, 0.55, u));
-    hue = mix(hue, vec3(0.75, 0.75, 0.45), smoothstep(0.55, 0.9, u));
+    vec3 hue = mix(c1.rgb, c2.rgb, smoothstep(0.2, 0.6, u));
+    hue = mix(hue, c3.rgb, smoothstep(0.6, 0.95, u));
     col += hue * smear * 0.75;
     return col;
 }

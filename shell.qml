@@ -186,6 +186,16 @@ ShellRoot {
     // Cosmic: the colours slowly travel through these palettes, about 40 seconds each, blending in between
     function mixc(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1); }
     function cosmicColor(k) { return themeColor(ytStyle, k); }
+    // Light rain, Prism and Balance keep their own look on the Spotify player, and the genre comes in through the light:
+    //   Light rain: the sun takes the genre's colour, like a different time of day; the sky stays blue
+    //   Prism: the colour fringes of the light take the genre's two colours; the surface stays
+    //   Balance: the grey stays; the smear runs through the genre's colours
+    function spotifyThemeColor(k) {
+        const g1 = Qt.lighter(c1, 1.7), g2 = Qt.lighter(c2, 1.5), g3 = Qt.lighter(c3, 1.9);
+        if (bgStyle === 6) return k === 0 ? mixc(themeColor(1, 0), g2, 0.6) : k === 1 ? mixc(themeColor(1, 1), g2, 0.45) : themeColor(1, k);
+        if (bgStyle === 7) return k === 1 ? g1 : k === 2 ? g2 : themeColor(2, k);
+        return [g1, g1, g2, g3][k];        // Balance
+    }
     function themeColor(theme, k) {      // a theme's colours (0 Cosmic, 1 Light rain, 2 Prism), slowly travelling through its palettes
         const pal = theme === 1 ? rainPalettes : theme === 2 ? prismPalettes : ytPalettes;
         const ph = (seconds / (theme === 0 ? 40 : 60)) % pal.length;
@@ -471,10 +481,10 @@ ShellRoot {
                     else root.pointer = root.lag = root.slowPointer = Qt.vector2d(99, 99);
                 }
             }
-            property color c0: root.ytMode ? root.cosmicColor(0) : root.bgStyle === 5 ? root.cosmicSpotify[0] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 0) : root.c0
-            property color c1: root.ytMode ? root.cosmicColor(1) : root.bgStyle === 5 ? root.cosmicSpotify[1] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 1) : root.c1
-            property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 2) : root.c2
-            property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.bgStyle >= 6 ? root.themeColor(root.bgStyle - 5, 3) : root.c3
+            property color c0: root.ytMode ? root.cosmicColor(0) : root.bgStyle === 5 ? root.cosmicSpotify[0] : root.bgStyle >= 6 ? root.spotifyThemeColor(0) : root.c0
+            property color c1: root.ytMode ? root.cosmicColor(1) : root.bgStyle === 5 ? root.cosmicSpotify[1] : root.bgStyle >= 6 ? root.spotifyThemeColor(1) : root.c1
+            property color c2: root.ytMode ? root.cosmicColor(2) : root.bgStyle === 5 ? root.cosmicSpotify[2] : root.bgStyle >= 6 ? root.spotifyThemeColor(2) : root.c2
+            property color c3: root.ytMode ? root.cosmicColor(3) : root.bgStyle === 5 ? root.cosmicSpotify[3] : root.bgStyle >= 6 ? root.spotifyThemeColor(3) : root.c3
             layer.enabled: true                     // drawn small and stretched: the look is soft, and it keeps the GPU cost low
             layer.textureSize: root.ytMode || root.bgStyle >= 6 ? Qt.size(1920, 1080) : Qt.size(960, 540)   // full size in YouTube mode, for thin lines
             layer.smooth: true
