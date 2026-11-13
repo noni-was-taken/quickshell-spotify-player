@@ -294,25 +294,26 @@ vec3 lightRain(vec2 p, float spotify) {
     vec2 g = (p - sun) * vec2(0.6, 1.0);
     col += c0.rgb * 0.45 * exp(-dot(g, g) / 0.35) + c1.rgb * 0.25 * exp(-dot(g, g) / 0.06);
     // threads of light, with a slight rainbow fringe
-    vec2 tp = p + look * vec2(0.07, 0.04);
-    vec3 s = vec3(threadGroups(tp + vec2(0.0016, 0.0), spotify), threadGroups(tp, spotify), threadGroups(tp - vec2(0.0016, 0.0), spotify));
-    col += c1.rgb * s * 1.7 * (1.0 + 0.35 * energy) + c0.rgb * 0.05 * (s.r + s.g + s.b);
-    // the cloud: soft blue-grey billows, lit gold only along their thin lower edges where the sun comes through
+    if (spotify > 0.5) {
+        // soft sun rays fanning down through the gaps in the clouds, slowly shifting
+        vec2 rq = p - sun;
+        float ang = atan(rq.x, rq.y);
+        float rays = fbm(vec2(ang * 5.0, clock * 0.03)) * 0.6 + fbm(vec2(ang * 13.0 + 4.0, clock * 0.05)) * 0.4;
+        rays = smoothstep(0.35, 0.8, rays) * smoothstep(0.05, 0.45, length(rq)) * smoothstep(-0.05, 0.25, rq.y) * exp(-length(rq) * 0.9);
+        col += mix(c0.rgb, c1.rgb, 0.5) * rays * 0.3 * (1.0 + 0.3 * energy);
+    } else {
+        vec2 tp = p + look * vec2(0.07, 0.04);
+        vec3 s = vec3(threadGroups(tp + vec2(0.0016, 0.0), spotify), threadGroups(tp, spotify), threadGroups(tp - vec2(0.0016, 0.0), spotify));
+        col += c1.rgb * s * 1.7 * (1.0 + 0.35 * energy) + c0.rgb * 0.05 * (s.r + s.g + s.b);
+    }
+    // the cloud bank: billowing along the top, with heavier puffs over the threads at the sides
     vec2 cp = p + look * 0.05;
-    vec2 w = cp + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.8;
-    float n = fbm(w * 1.6);
-    float shape = spotify > 0.5
-        ? exp(-(sq((cp.x - 0.45) / 1.1) + sq((cp.y + 0.82) / 0.32)))
-          + 0.8 * exp(-(sq((cp.x + 0.5) / 0.35) + sq((cp.y + 0.7) / 0.2)))
-        : max(exp(-sq((cp.y + 0.82) / 0.26)), exp(-(sq((abs(cp.x) - 1.42) / 0.38) + sq((cp.y + 0.55) / 0.22))));
-    float dens = n * 0.6 + shape * 0.6;
-    float cloud = smoothstep(0.45, 0.7, dens);
-    float inner = smoothstep(0.55, 0.95, dens);
-    vec3 body = mix(vec3(0.62, 0.68, 0.78), vec3(0.86, 0.88, 0.92), inner) * mix(1.0, 0.75, smoothstep(-0.2, 0.6, n - 0.45));   // soft white billows, shaded by their texture
-    float edge = smoothstep(0.45, 0.53, dens) * (1.0 - smoothstep(0.53, 0.66, dens));
-    float sunside = exp(-dot(g, g) / 0.8);
-    body += c1.rgb * edge * 0.55 * (0.4 + sunside) + c0.rgb * 0.2 * sunside * (1.0 - inner);
-    col = mix(col, body, cloud * 0.95);
+    float n = fbm(cp * 1.7 + vec2(t, -t * 0.6) + fbm(cp * 0.9 - t) * 0.9);
+    float shape = max(exp(-sq((cp.y + 0.82) / 0.26)),
+                      exp(-(sq((abs(cp.x) - 1.42) / 0.38) + sq((cp.y + 0.55) / 0.22))));
+    float cloud = smoothstep(0.42, 0.72, n * 0.75 + shape * 0.55);
+    vec3 cloudCol = mix(mix(c0.rgb, c1.rgb, 0.4) * 0.9 + 0.08, c2.rgb, smoothstep(0.5, 0.85, n));
+    col = mix(col, cloudCol, cloud * 0.92);
     // drifting mist low down
     float mist = fbm(p * 1.1 + vec2(t * 2.5, t)) * smoothstep(0.0, 0.9, p.y);
     col = mix(col, c3.rgb * 1.2 + 0.04, mist * 0.25);
